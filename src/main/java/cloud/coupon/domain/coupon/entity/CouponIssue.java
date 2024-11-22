@@ -27,7 +27,7 @@ public class CouponIssue {
     private Coupon coupon;
 
     private Long userId;
-    private String issueCode; //발급된 고유 쿠폰 코드
+    private String issuedCode; //발급된 고유 쿠폰 코드
     private boolean used;
     private LocalDateTime issuedAt; //발급 시간
     private LocalDateTime usedAt; //사용시간
@@ -36,10 +36,10 @@ public class CouponIssue {
     private CouponIssueStatus status; //상태(발급완료/사용완료/만료)
 
     @Builder
-    public CouponIssue(Coupon coupon, Long userId, String issueCode) {
+    public CouponIssue(Coupon coupon, Long userId, String issuedCode) {
         this.coupon = coupon;
         this.userId = userId;
-        this.issueCode = issueCode;
+        this.issuedCode = issuedCode;
         this.used = false;
         this.issuedAt = LocalDateTime.now();
         this.status = CouponIssueStatus.ISSUED;

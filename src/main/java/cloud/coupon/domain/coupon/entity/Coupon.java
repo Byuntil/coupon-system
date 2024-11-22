@@ -32,9 +32,9 @@ public class Coupon {
     private CouponType type;
     private Integer discountValue;
 
-    private LocalDateTime startTime;
-    private LocalDateTime endTime;
-    private LocalDateTime expireTime;
+    private LocalDateTime startTime; //발급 시작 시간
+    private LocalDateTime endTime; //발급 종료 시간
+    private LocalDateTime expireTime; //만료 시간
 
     @Enumerated(EnumType.STRING)
     private CouponStatus status;
