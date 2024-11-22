@@ -1,5 +1,6 @@
 package cloud.coupon.domain.coupon.service;
 
+import cloud.coupon.domain.coupon.dto.request.CouponIssueRequest;
 import cloud.coupon.domain.coupon.dto.response.CouponIssueResult;
 import cloud.coupon.domain.coupon.entity.Coupon;
 import cloud.coupon.domain.coupon.entity.CouponIssue;
@@ -29,21 +30,21 @@ public class CouponService {
 
     // 쿠폰 발급
     @Transactional
-    public CouponIssueResult issueCoupon(String code, Long userId, String requestIp) {
+    public CouponIssueResult issueCoupon(CouponIssueRequest request) {
         // 발급 로직
-        Coupon coupon = couponRepository.findByCode(code)
+        Coupon coupon = couponRepository.findByCode(request.code())
                 .orElseThrow(() -> new CouponNotFoundException(COUPON_NOT_FOUND_MESSAGE));
         try {
-            validateDuplicateIssue(code, userId);
+            validateDuplicateIssue(request.code(), request.userId());
 
             coupon.issue();
 
-            CouponIssue couponIssue = createCouponIssue(userId, coupon);
-            saveCouponIssueHistory(coupon, userId, requestIp, IssueResult.SUCCESS, null);
+            CouponIssue couponIssue = createCouponIssue(request.userId(), coupon);
+            saveCouponIssueHistory(coupon, request.userId(), request.requestIp(), IssueResult.SUCCESS, null);
 
             return CouponIssueResult.success(couponIssue.getIssuedCode());
         } catch (Exception e) {
-            saveCouponIssueHistory(coupon, userId, requestIp, IssueResult.FAIL, e.getMessage());
+            saveCouponIssueHistory(coupon, request.userId(), request.requestIp(), IssueResult.FAIL, e.getMessage());
             return CouponIssueResult.fail(e.getMessage());
         }
     }

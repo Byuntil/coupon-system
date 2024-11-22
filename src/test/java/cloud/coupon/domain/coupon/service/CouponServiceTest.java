@@ -3,6 +3,7 @@ package cloud.coupon.domain.coupon.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
+import cloud.coupon.domain.coupon.dto.request.CouponIssueRequest;
 import cloud.coupon.domain.coupon.dto.response.CouponIssueResult;
 import cloud.coupon.domain.coupon.entity.Coupon;
 import cloud.coupon.domain.coupon.entity.CouponIssue;
@@ -66,7 +67,7 @@ class CouponServiceTest {
     @DisplayName("쿠폰 발급 성공")
     void issueCoupon_success() {
         // when
-        CouponIssueResult result = couponService.issueCoupon(code, userId, requestIp);
+        CouponIssueResult result = couponService.issueCoupon(new CouponIssueRequest(code, userId, requestIp));
 
         // then
         assertThat(result.isSuccess()).isTrue();
@@ -91,10 +92,11 @@ class CouponServiceTest {
     @DisplayName("이미 발급받은 쿠폰을 재발급 시도시 예외 발생")
     void issueCoupon_duplicateIssue() {
         // given
-        couponService.issueCoupon(code, userId, requestIp);
+        couponService.issueCoupon(new CouponIssueRequest(code, userId, requestIp));
 
         // when & then
-        CouponIssueResult couponIssueResult = couponService.issueCoupon(code, userId, requestIp);
+        CouponIssueResult couponIssueResult = couponService.issueCoupon(
+                new CouponIssueRequest(code, userId, requestIp));
 
         assertThat(couponIssueResult.isSuccess()).isFalse();
         // 히스토리 확인
@@ -113,7 +115,7 @@ class CouponServiceTest {
 
         // when & then
         assertThatThrownBy(() ->
-                couponService.issueCoupon(nonExistentCouponId, userId, requestIp))
+                couponService.issueCoupon(new CouponIssueRequest(nonExistentCouponId, userId, requestIp)))
                 .isInstanceOf(CouponNotFoundException.class)
                 .hasMessage("존재하지 않는 쿠폰입니다.");
     }
@@ -124,11 +126,11 @@ class CouponServiceTest {
         // given
         // 재고 소진
         for (int i = 0; i < 10; i++) {
-            couponService.issueCoupon(code, userId + i, requestIp);
+            couponService.issueCoupon(new CouponIssueRequest(code, userId + i, requestIp));
         }
 
         // when
-        CouponIssueResult result = couponService.issueCoupon(code, userId + 10, requestIp);
+        CouponIssueResult result = couponService.issueCoupon(new CouponIssueRequest(code, userId + 10, requestIp));
 
         // then
         assertThat(result.isSuccess()).isFalse();
@@ -144,7 +146,8 @@ class CouponServiceTest {
     @DisplayName("쿠폰 사용 성공")
     void useCoupon_success() {
         // given
-        CouponIssueResult couponIssueResult = couponService.issueCoupon(code, userId, requestIp);// 쿠폰 발급
+        CouponIssueResult couponIssueResult = couponService.issueCoupon(
+                new CouponIssueRequest(code, userId, requestIp));// 쿠폰 발급
 
         // when
         couponService.useCoupon(couponIssueResult.getCouponCode(), userId);
