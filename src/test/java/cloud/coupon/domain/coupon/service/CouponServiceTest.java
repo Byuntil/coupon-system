@@ -6,12 +6,15 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import cloud.coupon.domain.coupon.dto.response.CouponIssueResult;
 import cloud.coupon.domain.coupon.entity.Coupon;
 import cloud.coupon.domain.coupon.entity.CouponIssue;
+import cloud.coupon.domain.coupon.entity.CouponIssueStatus;
 import cloud.coupon.domain.coupon.entity.IssueResult;
 import cloud.coupon.domain.coupon.repository.CouponIssueRepository;
 import cloud.coupon.domain.coupon.repository.CouponRepository;
 import cloud.coupon.domain.history.entity.CouponIssueHistory;
 import cloud.coupon.domain.history.repository.CouponIssueHistoryRepository;
 import cloud.coupon.global.error.exception.coupon.CouponNotFoundException;
+import cloud.coupon.global.error.exception.couponissue.CouponIssueNotFoundException;
+import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -51,6 +54,9 @@ class CouponServiceTest {
                 .code("TEST-0001")
                 .totalStock(10)
                 .remainStock(10)
+                .startTime(LocalDateTime.of(2023, 1, 1, 0, 0))
+                .endTime(LocalDateTime.of(2024, 1, 31, 23, 59))
+                .expireTime(LocalDateTime.of(3000, 1, 31, 23, 59))
                 .build();
 
         code = couponRepository.save(coupon).getCode();
@@ -66,7 +72,7 @@ class CouponServiceTest {
         assertThat(result.isSuccess()).isTrue();
 
         // DB 확인
-        CouponIssue savedCouponIssue = couponIssueRepository.findById(result.getCouponIssueId())
+        CouponIssue savedCouponIssue = couponIssueRepository.findByIssuedCodeAndUserId(result.getCouponCode(), userId)
                 .orElseThrow();
         assertThat(savedCouponIssue.getUserId()).isEqualTo(userId);
 
@@ -132,5 +138,32 @@ class CouponServiceTest {
                 .findByCouponCodeAndUserId(code, userId + 10)
                 .orElseThrow();
         assertThat(history.getResult()).isEqualTo(IssueResult.FAIL);
+    }
+
+    @Test
+    @DisplayName("쿠폰 사용 성공")
+    void useCoupon_success() {
+        // given
+        CouponIssueResult couponIssueResult = couponService.issueCoupon(code, userId, requestIp);// 쿠폰 발급
+
+        // when
+        couponService.useCoupon(couponIssueResult.getCouponCode(), userId);
+
+        // then
+        CouponIssue couponIssue = couponIssueRepository.findByIssuedCodeAndUserId(couponIssueResult.getCouponCode(),
+                        userId)
+                .orElseThrow();
+        assertThat(couponIssue.isUsed()).isTrue();
+        assertThat(couponIssue.getStatus()).isEqualTo(CouponIssueStatus.USED);
+    }
+
+    @Test
+    @DisplayName("존재하지 않는 쿠폰 사용 시도시 예외 발생")
+    void useCoupon_couponIssueNotFound() {
+        // when & then
+        assertThatThrownBy(() ->
+                couponService.useCoupon("INVALID_CODE", userId))
+                .isInstanceOf(CouponIssueNotFoundException.class)
+                .hasMessageContaining("발급된 쿠폰을 찾을 수 없습니다.");
     }
 }
