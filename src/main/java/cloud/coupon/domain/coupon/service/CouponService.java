@@ -41,7 +41,7 @@ public class CouponService {
             CouponIssue couponIssue = createCouponIssue(userId, coupon);
             saveCouponIssueHistory(coupon, userId, requestIp, IssueResult.SUCCESS, null);
 
-            return CouponIssueResult.success(couponIssue.getId());
+            return CouponIssueResult.success(couponIssue.getIssuedCode());
         } catch (Exception e) {
             saveCouponIssueHistory(coupon, userId, requestIp, IssueResult.FAIL, e.getMessage());
             return CouponIssueResult.fail(e.getMessage());
@@ -52,7 +52,7 @@ public class CouponService {
     @Transactional
     public void useCoupon(String issueCode, Long userId) {
         // 사용 처리 로직
-        CouponIssue couponIssue = couponIssueRepository.findByIssueCodeAndUserId(issueCode, userId)
+        CouponIssue couponIssue = couponIssueRepository.findByIssuedCodeAndUserId(issueCode, userId)
                 .orElseThrow(() -> new CouponIssueNotFoundException("발급된 쿠폰을 찾을 수 없습니다."));
 
         couponIssue.use();
@@ -65,13 +65,13 @@ public class CouponService {
     }
 
     private CouponIssue createCouponIssue(Long userId, Coupon coupon) {
-        String issueCode = couponCodeGenerator.generateCode();
+        String issuedCode = couponCodeGenerator.generateCode();
 
         return couponIssueRepository.save(
                 CouponIssue.builder()
                         .coupon(coupon)
                         .userId(userId)
-                        .issueCode(issueCode)
+                        .issuedCode(issuedCode)
                         .build());
     }
 

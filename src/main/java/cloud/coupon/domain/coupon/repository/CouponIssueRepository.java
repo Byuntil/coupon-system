@@ -12,5 +12,5 @@ import org.springframework.stereotype.Repository;
 public interface CouponIssueRepository extends JpaRepository<CouponIssue, Long> {
     boolean existsByCouponCodeAndUserId(String code, Long userId); //중복 발급 체크
 
-    Optional<CouponIssue> findByIssueCodeAndUserId(String code, Long userId); // 발급된 쿠폰 조회
+    Optional<CouponIssue> findByIssuedCodeAndUserId(String code, Long userId); // 발급된 쿠폰 조회
 }
