@@ -1,5 +1,6 @@
 package cloud.coupon.domain.coupon.entity;
 
+import cloud.coupon.global.error.exception.coupon.CouponAlreadyUsedException;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -27,6 +28,7 @@ public class CouponIssue {
 
     private Long userId;
     private String issueCode; //발급된 고유 쿠폰 코드
+    private boolean used;
     private LocalDateTime issuedAt; //발급 시간
     private LocalDateTime usedAt; //사용시간
 
@@ -38,7 +40,23 @@ public class CouponIssue {
         this.coupon = coupon;
         this.userId = userId;
         this.issueCode = issueCode;
+        this.used = false;
         this.issuedAt = LocalDateTime.now();
         this.status = CouponIssueStatus.ISSUED;
+    }
+
+    public void use() {
+        validateForUse();
+        this.used = true;
+        this.usedAt = LocalDateTime.now();
+        this.status = CouponIssueStatus.USED;
+        coupon.increaseUsedCount();
+    }
+
+    private void validateForUse() {
+        if (used) {
+            throw new CouponAlreadyUsedException("이미 사용된 쿠폰입니다.");
+        }
+        coupon.validateForUse();
     }
 }

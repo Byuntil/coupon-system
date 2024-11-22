@@ -1,6 +1,5 @@
 package cloud.coupon.domain.coupon.service;
 
-import cloud.coupon.domain.coupon.admin.dto.response.CouponStatusResponse;
 import cloud.coupon.domain.coupon.dto.response.CouponIssueResult;
 import cloud.coupon.domain.coupon.entity.Coupon;
 import cloud.coupon.domain.coupon.entity.CouponIssue;
@@ -10,8 +9,9 @@ import cloud.coupon.domain.coupon.repository.CouponRepository;
 import cloud.coupon.domain.coupon.util.CodeGenerator;
 import cloud.coupon.domain.history.entity.CouponIssueHistory;
 import cloud.coupon.domain.history.repository.CouponIssueHistoryRepository;
-import cloud.coupon.global.error.exception.CouponNotFoundException;
-import cloud.coupon.global.error.exception.DuplicateCouponException;
+import cloud.coupon.global.error.exception.coupon.CouponNotFoundException;
+import cloud.coupon.global.error.exception.coupon.DuplicateCouponException;
+import cloud.coupon.global.error.exception.couponissue.CouponIssueNotFoundException;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -20,6 +20,8 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class CouponService {
+    public static final String COUPON_NOT_FOUND_MESSAGE = "존재하지 않는 쿠폰입니다.";
+
     private final CouponRepository couponRepository;
     private final CouponIssueRepository couponIssueRepository;
     private final CouponIssueHistoryRepository couponIssueHistoryRepository;
@@ -27,12 +29,12 @@ public class CouponService {
 
     // 쿠폰 발급
     @Transactional
-    public CouponIssueResult issueCoupon(Long couponId, Long userId, String requestIp) {
+    public CouponIssueResult issueCoupon(String code, Long userId, String requestIp) {
         // 발급 로직
-        Coupon coupon = couponRepository.findById(couponId)
-                .orElseThrow(() -> new CouponNotFoundException("존재하지 않는 쿠폰입니다."));
+        Coupon coupon = couponRepository.findByCode(code)
+                .orElseThrow(() -> new CouponNotFoundException(COUPON_NOT_FOUND_MESSAGE));
         try {
-            validateDuplicateIssue(couponId, userId, coupon, requestIp);
+            validateDuplicateIssue(code, userId);
 
             coupon.issue();
 
@@ -46,22 +48,20 @@ public class CouponService {
         }
     }
 
-    private void validateDuplicateIssue(Long couponId, Long userId, Coupon coupon, String requestIp) {
-        if (couponIssueRepository.existsByCouponIdAndUserId(couponId, userId)) {
+    // 쿠폰 사용 처리 - 데이터 수정 필요
+    @Transactional
+    public void useCoupon(String issueCode, Long userId) {
+        // 사용 처리 로직
+        CouponIssue couponIssue = couponIssueRepository.findByIssueCodeAndUserId(issueCode, userId)
+                .orElseThrow(() -> new CouponIssueNotFoundException("발급된 쿠폰을 찾을 수 없습니다."));
+
+        couponIssue.use();
+    }
+
+    private void validateDuplicateIssue(String code, Long userId) {
+        if (couponIssueRepository.existsByCouponCodeAndUserId(code, userId)) {
             throw new DuplicateCouponException("이미 발급된 쿠폰입니다.");
         }
-    }
-
-    public CouponStatusResponse getCouponStatus(Long couponId) {
-        // 조회 로직
-        return null;
-    }
-
-    // 쿠폰 사용 처리 - 데이터 수정 필요
-
-    @Transactional
-    public void useCoupon(Long couponIssueId) {
-        // 사용 처리 로직
     }
 
     private CouponIssue createCouponIssue(Long userId, Coupon coupon) {
