@@ -11,7 +11,7 @@ import cloud.coupon.domain.coupon.repository.CouponIssueRepository;
 import cloud.coupon.domain.coupon.repository.CouponRepository;
 import cloud.coupon.domain.history.entity.CouponIssueHistory;
 import cloud.coupon.domain.history.repository.CouponIssueHistoryRepository;
-import cloud.coupon.global.error.exception.CouponNotFoundException;
+import cloud.coupon.global.error.exception.coupon.CouponNotFoundException;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -35,7 +35,7 @@ class CouponServiceTest {
     @Autowired
     private CouponIssueHistoryRepository couponIssueHistoryRepository;
 
-    private Long savedCouponId;
+    private String code;
     private final Long userId = 1L;
     private final String requestIp = "127.0.0.1";
 
@@ -48,18 +48,19 @@ class CouponServiceTest {
         // 테스트용 쿠폰 생성
         Coupon coupon = Coupon.builder()
                 .name("테스트 쿠폰")
+                .code("TEST-0001")
                 .totalStock(10)
                 .remainStock(10)
                 .build();
 
-        savedCouponId = couponRepository.save(coupon).getId();
+        code = couponRepository.save(coupon).getCode();
     }
 
     @Test
     @DisplayName("쿠폰 발급 성공")
     void issueCoupon_success() {
         // when
-        CouponIssueResult result = couponService.issueCoupon(savedCouponId, userId, requestIp);
+        CouponIssueResult result = couponService.issueCoupon(code, userId, requestIp);
 
         // then
         assertThat(result.isSuccess()).isTrue();
@@ -69,13 +70,13 @@ class CouponServiceTest {
                 .orElseThrow();
         assertThat(savedCouponIssue.getUserId()).isEqualTo(userId);
 
-        Coupon updatedCoupon = couponRepository.findById(savedCouponId)
+        Coupon updatedCoupon = couponRepository.findByCode(code)
                 .orElseThrow();
         assertThat(updatedCoupon.getRemainStock()).isEqualTo(9);
 
         // 히스토리 확인
         CouponIssueHistory history = couponIssueHistoryRepository
-                .findByCouponIdAndUserId(savedCouponId, userId)
+                .findByCouponCodeAndUserId(code, userId)
                 .orElseThrow();
         assertThat(history.getResult()).isEqualTo(IssueResult.SUCCESS);
     }
@@ -84,10 +85,10 @@ class CouponServiceTest {
     @DisplayName("이미 발급받은 쿠폰을 재발급 시도시 예외 발생")
     void issueCoupon_duplicateIssue() {
         // given
-        couponService.issueCoupon(savedCouponId, userId, requestIp);
+        couponService.issueCoupon(code, userId, requestIp);
 
         // when & then
-        CouponIssueResult couponIssueResult = couponService.issueCoupon(savedCouponId, userId, requestIp);
+        CouponIssueResult couponIssueResult = couponService.issueCoupon(code, userId, requestIp);
 
         assertThat(couponIssueResult.isSuccess()).isFalse();
         // 히스토리 확인
@@ -102,7 +103,7 @@ class CouponServiceTest {
     @DisplayName("존재하지 않는 쿠폰으로 발급 시도시 예외 발생")
     void issueCoupon_notFoundCoupon() {
         // given
-        Long nonExistentCouponId = 999L;
+        String nonExistentCouponId = "NON-EXISTENT-COUPON-ID";
 
         // when & then
         assertThatThrownBy(() ->
@@ -117,18 +118,18 @@ class CouponServiceTest {
         // given
         // 재고 소진
         for (int i = 0; i < 10; i++) {
-            couponService.issueCoupon(savedCouponId, userId + i, requestIp);
+            couponService.issueCoupon(code, userId + i, requestIp);
         }
 
         // when
-        CouponIssueResult result = couponService.issueCoupon(savedCouponId, userId + 10, requestIp);
+        CouponIssueResult result = couponService.issueCoupon(code, userId + 10, requestIp);
 
         // then
         assertThat(result.isSuccess()).isFalse();
 
         // 히스토리 확인
         CouponIssueHistory history = couponIssueHistoryRepository
-                .findByCouponIdAndUserId(savedCouponId, userId + 10)
+                .findByCouponCodeAndUserId(code, userId + 10)
                 .orElseThrow();
         assertThat(history.getResult()).isEqualTo(IssueResult.FAIL);
     }

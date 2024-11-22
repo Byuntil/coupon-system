@@ -10,6 +10,6 @@ import org.springframework.stereotype.Repository;
  */
 @Repository
 public interface CouponRepository extends JpaRepository<Coupon, Long> {
-    Optional<Coupon> findById(Long couponId);
+    Optional<Coupon> findByCode(String code);
     //재고 업데이트 등
 }
