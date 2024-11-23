@@ -1,5 +1,7 @@
 package cloud.coupon.domain.coupon.service;
 
+import static cloud.coupon.domain.coupon.constant.ErrorMessage.COUPON_ISSUE_NOT_FOUND_MESSAGE;
+import static cloud.coupon.domain.coupon.constant.ErrorMessage.COUPON_NOT_FOUND_MESSAGE;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -116,7 +118,7 @@ class CouponServiceTest {
         assertThatThrownBy(() ->
                 couponService.issueCoupon(new CouponIssueRequest(nonExistentCouponId, userId, requestIp)))
                 .isInstanceOf(CouponNotFoundException.class)
-                .hasMessage("존재하지 않는 쿠폰입니다.");
+                .hasMessage(COUPON_NOT_FOUND_MESSAGE);
     }
 
     @Test
@@ -166,6 +168,6 @@ class CouponServiceTest {
         assertThatThrownBy(() ->
                 couponService.useCoupon("INVALID_CODE", userId))
                 .isInstanceOf(CouponIssueNotFoundException.class)
-                .hasMessageContaining("발급된 쿠폰을 찾을 수 없습니다.");
+                .hasMessageContaining(COUPON_ISSUE_NOT_FOUND_MESSAGE);
     }
 }
