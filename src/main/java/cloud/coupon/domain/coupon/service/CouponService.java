@@ -32,7 +32,7 @@ public class CouponService {
     @Transactional
     public CouponIssueResult issueCoupon(CouponIssueRequest request) {
         // 발급 로직
-        Coupon coupon = couponRepository.findByCode(request.code())
+        Coupon coupon = couponRepository.findByCodeAndIsDeletedFalse(request.code())
                 .orElseThrow(() -> new CouponNotFoundException(COUPON_NOT_FOUND_MESSAGE));
         try {
             validateDuplicateIssue(request.code(), request.userId());

@@ -54,7 +54,6 @@ class CouponServiceTest {
                 .name("테스트 쿠폰")
                 .code("TEST-0001")
                 .totalStock(10)
-                .remainStock(10)
                 .startTime(LocalDateTime.of(2023, 1, 1, 0, 0))
                 .endTime(LocalDateTime.of(2024, 1, 31, 23, 59))
                 .expireTime(LocalDateTime.of(3000, 1, 31, 23, 59))
@@ -77,7 +76,7 @@ class CouponServiceTest {
                 .orElseThrow();
         assertThat(savedCouponIssue.getUserId()).isEqualTo(userId);
 
-        Coupon updatedCoupon = couponRepository.findByCode(code)
+        Coupon updatedCoupon = couponRepository.findByCodeAndIsDeletedFalse(code)
                 .orElseThrow();
         assertThat(updatedCoupon.getRemainStock()).isEqualTo(9);
 
