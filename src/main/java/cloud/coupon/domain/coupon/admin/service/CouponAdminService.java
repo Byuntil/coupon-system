@@ -1,5 +1,10 @@
 package cloud.coupon.domain.coupon.admin.service;
 
+import static cloud.coupon.domain.coupon.constant.ErrorMessage.COUPON_ALREADY_DELETED_ERROR_MESSAGE;
+import static cloud.coupon.domain.coupon.constant.ErrorMessage.COUPON_ALREADY_EXISTS_MESSAGE;
+import static cloud.coupon.domain.coupon.constant.ErrorMessage.COUPON_ALREADY_USED_ERROR_MESSAGE;
+import static cloud.coupon.domain.coupon.constant.ErrorMessage.COUPON_NOT_FOUND_MESSAGE;
+
 import cloud.coupon.domain.coupon.admin.dto.request.CouponCreateRequest;
 import cloud.coupon.domain.coupon.admin.dto.request.CouponUpdateRequest;
 import cloud.coupon.domain.coupon.admin.dto.response.CouponResponse;
@@ -7,9 +12,9 @@ import cloud.coupon.domain.coupon.admin.dto.response.CouponStatusResponse;
 import cloud.coupon.domain.coupon.entity.Coupon;
 import cloud.coupon.domain.coupon.entity.CouponStatus;
 import cloud.coupon.domain.coupon.repository.CouponRepository;
+import cloud.coupon.global.error.exception.coupon.CouponAlreadyDeletedException;
 import cloud.coupon.global.error.exception.coupon.CouponAlreadyExistException;
 import cloud.coupon.global.error.exception.coupon.CouponAlreadyUsedException;
-import cloud.coupon.global.error.exception.coupon.CouponNotAvailableException;
 import cloud.coupon.global.error.exception.coupon.CouponNotFoundException;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
@@ -20,8 +25,6 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class CouponAdminService {
-    public static final String COUPON_NOT_FOUND_MESSAGE = "존재하지 않는 쿠폰입니다.";
-    public static final String COUPON_ALREADY_EXISTS_MESSAGE = "이미 존재하는 쿠폰입니다.";
 
     private final CouponRepository couponRepository;
 
@@ -34,37 +37,32 @@ public class CouponAdminService {
         return CouponResponse.from(savedCoupon);
     }
 
-    private void validateAlreadyExistCoupon(CouponCreateRequest request) {
-        if (couponRepository.existsActiveCodeAndNotDeleted(request.code())) {
-            throw new CouponAlreadyExistException(COUPON_ALREADY_EXISTS_MESSAGE);
-        }
-    }
-
     // 쿠폰 수정 - 데이터 수정 필요
+
     @Transactional
     public CouponResponse updateCoupon(Long couponId, CouponUpdateRequest request) {
         Coupon coupon = couponRepository.findById(couponId)
-                .orElseThrow(() -> new CouponNotFoundException("쿠폰을 찾을 수 없습니다."));
+                .orElseThrow(() -> new CouponNotFoundException(COUPON_NOT_FOUND_MESSAGE));
 
-        // 이미 발급된 쿠폰이 있는 경우 업데이트 제한
-        if (coupon.getUsedCount() > 0) {
-            throw new CouponAlreadyUsedException("이미 사용된 쿠폰은 수정할 수 없습니다.");
-        }
-
-        // 삭제된 쿠폰인 경우 업데이트 제한
-        if (coupon.isDeleted()) {
-            throw new CouponNotAvailableException("삭제된 쿠폰은 수정할 수 없습니다.");
-        }
+        restrictUpdate(coupon);
 
         coupon.update(request);
 
         return CouponResponse.from(coupon);
     }
 
+    private void restrictUpdate(Coupon coupon) {
+        validateAlreadyUsedCoupon(coupon);
+        validateDeletedCoupon(coupon);
+    }
+
     @Transactional
     public void deleteCoupon(Long couponId) {
         Coupon coupon = couponRepository.findById(couponId)
-                .orElseThrow(() -> new CouponNotFoundException("쿠폰을 찾을 수 없습니다."));
+                .orElseThrow(() -> new CouponNotFoundException(COUPON_NOT_FOUND_MESSAGE));
+
+        validateAlreadyUsedCoupon(coupon);
+        validateDeletedCoupon(coupon);
 
         coupon.markAsDeleted();
         coupon.changeStatus(CouponStatus.EXPIRED);
@@ -90,6 +88,12 @@ public class CouponAdminService {
         return null;
     }
 
+    private void validateAlreadyExistCoupon(CouponCreateRequest request) {
+        if (couponRepository.existsActiveCodeAndNotDeleted(request.code())) {
+            throw new CouponAlreadyExistException(COUPON_ALREADY_EXISTS_MESSAGE);
+        }
+    }
+
     private Coupon getCoupon(CouponCreateRequest request) {
         return Coupon.builder()
                 .name(request.name())
@@ -101,5 +105,17 @@ public class CouponAdminService {
                 .endTime(request.endTime())
                 .expireTime(request.expireTime())
                 .build();
+    }
+
+    private void validateAlreadyUsedCoupon(Coupon coupon) {
+        if (coupon.getUsedCount() > 0) {
+            throw new CouponAlreadyUsedException(COUPON_ALREADY_USED_ERROR_MESSAGE);
+        }
+    }
+
+    private void validateDeletedCoupon(Coupon coupon) {
+        if (coupon.isDeleted()) {
+            throw new CouponAlreadyDeletedException(COUPON_ALREADY_DELETED_ERROR_MESSAGE);
+        }
     }
 }
