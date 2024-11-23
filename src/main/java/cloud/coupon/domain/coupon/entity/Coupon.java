@@ -2,6 +2,7 @@ package cloud.coupon.domain.coupon.entity;
 
 import cloud.coupon.global.error.exception.coupon.CouponNotAvailableException;
 import cloud.coupon.global.error.exception.coupon.CouponOutOfStockException;
+import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -32,8 +33,11 @@ public class Coupon {
     private CouponType type;
     private Integer discountValue;
 
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime startTime; //발급 시작 시간
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime endTime; //발급 종료 시간
+    @JsonFormat(pattern = "yyyy-MM-dd HH:mm:ss")
     private LocalDateTime expireTime; //만료 시간
 
     @Enumerated(EnumType.STRING)
@@ -42,12 +46,12 @@ public class Coupon {
     private boolean isDeleted;
 
     @Builder
-    public Coupon(String name, String code, Integer totalStock, Integer remainStock, CouponType type,
+    public Coupon(String name, String code, Integer totalStock, CouponType type,
                   Integer discountValue, LocalDateTime startTime, LocalDateTime endTime, LocalDateTime expireTime) {
         this.name = name;
         this.code = code;
         this.totalStock = totalStock;
-        this.remainStock = remainStock;
+        this.remainStock = totalStock;
         this.usedCount = 0;
         this.type = type;
         this.discountValue = discountValue;
