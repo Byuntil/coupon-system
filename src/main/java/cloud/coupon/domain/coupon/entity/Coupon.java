@@ -1,5 +1,6 @@
 package cloud.coupon.domain.coupon.entity;
 
+import cloud.coupon.domain.coupon.admin.dto.request.CouponUpdateRequest;
 import cloud.coupon.global.error.exception.coupon.CouponNotAvailableException;
 import cloud.coupon.global.error.exception.coupon.CouponOutOfStockException;
 import com.fasterxml.jackson.annotation.JsonFormat;
@@ -70,6 +71,26 @@ public class Coupon {
         //재고 소진시 상태변경
         if (remainStock == 0) {
             this.status = CouponStatus.EXHAUSTED;
+        }
+    }
+
+    public void update(CouponUpdateRequest request) {
+        validateUpdateTime(request.startTime(), request.endTime(), request.expireTime());
+
+        this.name = request.name();
+        this.type = request.couponType();
+        this.discountValue = request.discountValue();
+        this.startTime = request.startTime();
+        this.endTime = request.endTime();
+        this.expireTime = request.expireTime();
+    }
+
+    private void validateUpdateTime(LocalDateTime startTime, LocalDateTime endTime, LocalDateTime expireTime) {
+        if (startTime.isAfter(endTime)) {
+            throw new IllegalArgumentException("발급 시작 시간은 종료 시간보다 이전이어야 합니다.");
+        }
+        if (endTime.isAfter(expireTime)) {
+            throw new IllegalArgumentException("발급 종료 시간은 만료 시간보다 이전이어야 합니다.");
         }
     }
 

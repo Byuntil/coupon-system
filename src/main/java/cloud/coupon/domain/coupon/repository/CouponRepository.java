@@ -3,6 +3,7 @@ package cloud.coupon.domain.coupon.repository;
 import cloud.coupon.domain.coupon.entity.Coupon;
 import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 /**
@@ -12,8 +13,11 @@ import org.springframework.stereotype.Repository;
 public interface CouponRepository extends JpaRepository<Coupon, Long> {
     Optional<Coupon> findByCode(String code);
 
-    boolean existsCouponByCode(String code);
-    //재고 업데이트 등
+    @Query("SELECT c FROM Coupon c WHERE c.code = :code AND c.isDeleted = false")
+    Optional<Coupon> findByCodeAndIsDeletedFalse(String code);
 
+    @Query("SELECT EXISTS (SELECT 1 FROM Coupon c WHERE c.code = :code AND c.isDeleted = false)")
+    boolean existsActiveCodeAndNotDeleted(String code);
+    //재고 업데이트 등
 
 }
