@@ -11,11 +11,11 @@ import cloud.coupon.domain.coupon.admin.dto.request.CouponCreateRequest;
 import cloud.coupon.domain.coupon.admin.dto.request.CouponUpdateRequest;
 import cloud.coupon.domain.coupon.admin.dto.response.CouponResponse;
 import cloud.coupon.domain.coupon.entity.Coupon;
+import cloud.coupon.domain.coupon.entity.CouponType;
 import cloud.coupon.domain.coupon.repository.CouponRepository;
 import cloud.coupon.global.error.exception.coupon.CouponAlreadyDeletedException;
 import cloud.coupon.global.error.exception.coupon.CouponAlreadyExistException;
 import cloud.coupon.global.error.exception.coupon.CouponAlreadyUsedException;
-import cloud.coupon.global.error.exception.coupon.CouponNotAvailableException;
 import cloud.coupon.global.error.exception.coupon.CouponNotFoundException;
 import java.time.LocalDateTime;
 import org.junit.jupiter.api.BeforeEach;
@@ -45,6 +45,8 @@ class CouponAdminServiceTest {
                 .name("테스트 쿠폰")
                 .code("TEST-0001")
                 .totalStock(10)
+                .type(CouponType.FIXED_AMOUNT)
+                .discountValue(1000)
                 .startTime(LocalDateTime.of(2023, 1, 1, 0, 0))
                 .endTime(LocalDateTime.of(2024, 1, 31, 23, 59))
                 .expireTime(LocalDateTime.of(3000, 1, 31, 23, 59))
@@ -83,13 +85,26 @@ class CouponAdminServiceTest {
         @DisplayName("쿠폰의 정보를 수정한다.")
         void updateCouponTest() {
             // given
-            couponAdminService.createCoupon(request);
-            Coupon coupon = couponRepository.findByCodeAndIsDeletedFalse(request.code()).orElseThrow();
-            CouponUpdateRequest updateRequest = CouponUpdateRequest.from(coupon);
+            LocalDateTime now = LocalDateTime.now();
+            CouponResponse createdCoupon = couponAdminService.createCoupon(request);
+            Coupon newCoupon = Coupon.builder()
+                    .name("변경된 쿠폰")
+                    .code("TEST-0001")
+                    .totalStock(100)
+                    .type(CouponType.FIXED_AMOUNT)
+                    .discountValue(1000)
+                    .startTime(now)
+                    .endTime(now.plusDays(7))
+                    .expireTime(now.plusDays(30))
+                    .build();
+            CouponUpdateRequest updateRequest = CouponUpdateRequest.from(newCoupon);
             // when
-            CouponResponse couponResponse = couponAdminService.updateCoupon(coupon.getId(), updateRequest);
+            CouponResponse couponResponse = couponAdminService.updateCoupon(createdCoupon.id(), updateRequest);
             // then
-            assertThat(couponResponse.code()).isEqualTo(request.code());
+            Coupon foundCoupon = couponRepository.findById(createdCoupon.id()).orElseThrow();
+            assertThat(foundCoupon.getId()).isEqualTo(createdCoupon.id());
+            assertThat(foundCoupon.getCode()).isEqualTo(couponResponse.code());
+            assertThat(foundCoupon.getName()).isEqualTo(couponResponse.name());
         }
 
         @Test
@@ -168,7 +183,7 @@ class CouponAdminServiceTest {
 
             // when & then
             assertThatThrownBy(() -> couponAdminService.updateCoupon(createdCoupon.id(), updateRequest))
-                    .isInstanceOf(CouponNotAvailableException.class)
+                    .isInstanceOf(CouponAlreadyDeletedException.class)
                     .hasMessage(COUPON_ALREADY_DELETED_ERROR_MESSAGE);
         }
     }
