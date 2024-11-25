@@ -33,12 +33,12 @@ public class CouponAdminService {
     public CouponResponse createCoupon(CouponCreateRequest request) {
         validateAlreadyExistCoupon(request);
 
-        Coupon savedCoupon = couponRepository.save(getCoupon(request));
+        Coupon savedCoupon = couponRepository.save(request.toEntity());
         return CouponResponse.from(savedCoupon);
     }
 
-    // 쿠폰 수정 - 데이터 수정 필요
 
+    // 쿠폰 수정 - 데이터 수정 필요
     @Transactional
     public CouponResponse updateCoupon(Long couponId, CouponUpdateRequest request) {
         Coupon coupon = couponRepository.findById(couponId)
@@ -74,13 +74,6 @@ public class CouponAdminService {
     public void stopCouponIssue(Long couponId) {
         // 중단 로직
     }
-
-    public CouponStatusResponse getCouponStatus(String code) {
-        Coupon coupon = couponRepository.findByCodeAndIsDeletedFalse(code)
-                .orElseThrow(() -> new CouponNotFoundException(COUPON_NOT_FOUND_MESSAGE));
-        return CouponStatusResponse.from(coupon);
-    }
-
     // 조회 메서드들은 readOnly 적용
 
     public List<CouponStatusResponse> getCouponStatistics() {
@@ -88,23 +81,16 @@ public class CouponAdminService {
         return null;
     }
 
+    public CouponStatusResponse getCouponStatus(String code) {
+        Coupon coupon = couponRepository.findByCodeAndIsDeletedFalse(code)
+                .orElseThrow(() -> new CouponNotFoundException(COUPON_NOT_FOUND_MESSAGE));
+        return CouponStatusResponse.from(coupon);
+    }
+
     private void validateAlreadyExistCoupon(CouponCreateRequest request) {
         if (couponRepository.existsActiveCodeAndNotDeleted(request.code())) {
             throw new CouponAlreadyExistException(COUPON_ALREADY_EXISTS_MESSAGE);
         }
-    }
-
-    private Coupon getCoupon(CouponCreateRequest request) {
-        return Coupon.builder()
-                .name(request.name())
-                .code(request.code())
-                .totalStock(request.totalStock())
-                .type(request.couponType())
-                .discountValue(request.discountValue())
-                .startTime(request.startTime())
-                .endTime(request.endTime())
-                .expireTime(request.expireTime())
-                .build();
     }
 
     private void validateAlreadyUsedCoupon(Coupon coupon) {
