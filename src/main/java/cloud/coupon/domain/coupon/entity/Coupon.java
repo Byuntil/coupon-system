@@ -78,8 +78,9 @@ public class Coupon {
         validateUpdateTime(request.startTime(), request.endTime(), request.expireTime());
 
         this.name = request.name();
-        this.type = request.couponType();
+        this.totalStock = request.totalStock();
         this.discountValue = request.discountValue();
+        this.type = request.type();
         this.startTime = request.startTime();
         this.endTime = request.endTime();
         this.expireTime = request.expireTime();

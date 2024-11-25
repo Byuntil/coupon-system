@@ -1,5 +1,6 @@
 package cloud.coupon.domain.coupon.admin.dto.request;
 
+import cloud.coupon.domain.coupon.entity.CouponType;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
@@ -9,12 +10,10 @@ public record CouponUpdateRequest(
         @Size(min = 1, max = 50, message = "쿠폰 이름은 1-50자 사이여야 합니다.")
         String name,
 
-        // code는 수정 불가능하므로 제외
+        CouponType type,
 
         @Min(value = 0, message = "쿠폰 총 수량은 0개 이상이어야 합니다.")
         Integer totalStock,
-
-        // type은 수정 불가능하므로 제외
 
         @Min(value = 1, message = "할인 값은 1 이상이어야 합니다.")
         Integer discountValue,
@@ -32,6 +31,9 @@ public record CouponUpdateRequest(
         if (startTime != null && endTime != null && expireTime != null) {
             validateTimeSequence(startTime, endTime, expireTime);
         }
+        if (type != null && discountValue != null) {
+            validateDiscountValue(type, discountValue);
+        }
     }
 
     private void validateTimeSequence(LocalDateTime startTime, LocalDateTime endTime, LocalDateTime expireTime) {
@@ -44,6 +46,17 @@ public record CouponUpdateRequest(
         if (startTime.isBefore(LocalDateTime.now())) {
             throw new IllegalArgumentException("쿠폰 시작 시간은 현재 시간 이후여야 합니다.");
         }
+    }
+
+    private void validateDiscountValue(CouponType couponType, Integer discountValue) {
+        if (couponType == CouponType.PERCENTAGE) {
+            if (discountValue <= 0 || discountValue > 100) {
+                throw new IllegalArgumentException("퍼센트 할인율은 1~100 사이여야 합니다.");
+            }
+        } else if (couponType == CouponType.FIXED_AMOUNT && discountValue <= 0) {
+            throw new IllegalArgumentException("고정 금액 할인은 0보다 커야 합니다.");
+        }
+
     }
 
 }
