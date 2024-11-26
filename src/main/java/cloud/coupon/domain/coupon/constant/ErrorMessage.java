@@ -7,6 +7,8 @@ public class ErrorMessage {
     public static final String COUPON_DUPLICATE_ERROR_MESSAGE = "중복된 쿠폰이 존재합니다.";
     public static final String COUPON_ALREADY_USED_ERROR_MESSAGE = "이미 사용된 쿠폰입니다.";
     public static final String COUPON_ALREADY_DELETED_ERROR_MESSAGE = "이미 삭제된 쿠폰입니다.";
+    public static final String COUPON_ALREADY_DISABLED_ERROR_MESSAGE = "이미 비활성화된 쿠폰입니다.";
+    public static final String COUPON_NOT_MODIFIABLE_ERROR_MESSAGE = "비활성화 된 쿠폰은 수정/삭제할 수 없습니다";
 
     private ErrorMessage() {
     }
