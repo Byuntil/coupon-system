@@ -70,7 +70,7 @@ public class CouponAdminService {
     // 쿠폰 비활성화 - 데이터 수정 필요
 
     @Transactional
-    public void disableCouponIssue(Long couponId) {
+    public void disableCoupon(Long couponId) {
         Coupon coupon = couponRepository.findById(couponId)
                 .orElseThrow(() -> new CouponNotFoundException(COUPON_NOT_FOUND_MESSAGE));
 
