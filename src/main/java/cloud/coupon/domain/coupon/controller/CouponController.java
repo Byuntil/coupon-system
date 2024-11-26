@@ -23,14 +23,14 @@ public class CouponController {
     public ResponseEntity<CouponIssueResult> issueCoupon(@RequestBody CouponIssueRequest request) {
         CouponIssueResult result = couponService.issueCoupon(request);
         if (result.isSuccess()) {
-            return new ResponseEntity<>(result, HttpStatus.CREATED);
+            return ResponseEntity.status(HttpStatus.CREATED).body(result);
         }
-        return new ResponseEntity<>(result, HttpStatus.BAD_REQUEST);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(result);
     }
 
     @PostMapping("/use")
     public ResponseEntity<CouponUseResponse> useCoupon(@RequestBody CouponUseRequest request) {
         CouponUseResponse couponUseResponse = couponService.useCoupon(request.userId(), request.issueCode());
-        return new ResponseEntity<>(couponUseResponse, HttpStatus.OK);
+        return ResponseEntity.status(HttpStatus.OK).body(couponUseResponse);
     }
 }
