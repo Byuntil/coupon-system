@@ -10,10 +10,11 @@ public record CouponUpdateRequest(
         @Size(min = 1, max = 50, message = "쿠폰 이름은 1-50자 사이여야 합니다.")
         String name,
 
-        CouponType type,
-
         @Min(value = 0, message = "쿠폰 총 수량은 0개 이상이어야 합니다.")
         Integer totalStock,
+
+        @JsonFormat(shape = JsonFormat.Shape.STRING)
+        CouponType couponType,
 
         @Min(value = 1, message = "할인 값은 1 이상이어야 합니다.")
         Integer discountValue,
@@ -31,8 +32,8 @@ public record CouponUpdateRequest(
         if (startTime != null && endTime != null && expireTime != null) {
             validateTimeSequence(startTime, endTime, expireTime);
         }
-        if (type != null && discountValue != null) {
-            validateDiscountValue(type, discountValue);
+        if (couponType != null && discountValue != null) {
+            validateDiscountValue(couponType, discountValue);
         }
     }
 

@@ -80,7 +80,7 @@ public class Coupon {
         this.name = request.name();
         this.totalStock = request.totalStock();
         this.discountValue = request.discountValue();
-        this.type = request.type();
+        this.type = request.couponType();
         this.startTime = request.startTime();
         this.endTime = request.endTime();
         this.expireTime = request.expireTime();
