@@ -1,9 +1,11 @@
 package cloud.coupon.domain.coupon.admin.service;
 
 import static cloud.coupon.domain.coupon.constant.ErrorMessage.COUPON_ALREADY_DELETED_ERROR_MESSAGE;
+import static cloud.coupon.domain.coupon.constant.ErrorMessage.COUPON_ALREADY_DISABLED_ERROR_MESSAGE;
 import static cloud.coupon.domain.coupon.constant.ErrorMessage.COUPON_ALREADY_EXISTS_MESSAGE;
 import static cloud.coupon.domain.coupon.constant.ErrorMessage.COUPON_ALREADY_USED_ERROR_MESSAGE;
 import static cloud.coupon.domain.coupon.constant.ErrorMessage.COUPON_NOT_FOUND_MESSAGE;
+import static cloud.coupon.domain.coupon.constant.ErrorMessage.COUPON_NOT_MODIFIABLE_ERROR_MESSAGE;
 
 import cloud.coupon.domain.coupon.admin.dto.request.CouponCreateRequest;
 import cloud.coupon.domain.coupon.admin.dto.request.CouponUpdateRequest;
@@ -13,9 +15,11 @@ import cloud.coupon.domain.coupon.entity.Coupon;
 import cloud.coupon.domain.coupon.entity.CouponStatus;
 import cloud.coupon.domain.coupon.repository.CouponRepository;
 import cloud.coupon.global.error.exception.coupon.CouponAlreadyDeletedException;
+import cloud.coupon.global.error.exception.coupon.CouponAlreadyDisabledException;
 import cloud.coupon.global.error.exception.coupon.CouponAlreadyExistException;
 import cloud.coupon.global.error.exception.coupon.CouponAlreadyUsedException;
 import cloud.coupon.global.error.exception.coupon.CouponNotFoundException;
+import cloud.coupon.global.error.exception.coupon.CouponNotModifiableException;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -51,11 +55,6 @@ public class CouponAdminService {
         return CouponResponse.from(coupon);
     }
 
-    private void restrictUpdate(Coupon coupon) {
-        validateAlreadyUsedCoupon(coupon);
-        validateDeletedCoupon(coupon);
-    }
-
     @Transactional
     public void deleteCoupon(Long couponId) {
         Coupon coupon = couponRepository.findById(couponId)
@@ -68,11 +67,17 @@ public class CouponAdminService {
         coupon.changeStatus(CouponStatus.EXPIRED);
     }
 
-    // 발급 중단 - 데이터 수정 필요
+    // 쿠폰 비활성화 - 데이터 수정 필요
 
     @Transactional
-    public void stopCouponIssue(Long couponId) {
-        // 중단 로직
+    public void disableCouponIssue(Long couponId) {
+        Coupon coupon = couponRepository.findById(couponId)
+                .orElseThrow(() -> new CouponNotFoundException(COUPON_NOT_FOUND_MESSAGE));
+
+        if (coupon.getStatus() == CouponStatus.DISABLED) {
+            throw new CouponAlreadyDisabledException(COUPON_ALREADY_DISABLED_ERROR_MESSAGE);
+        }
+        coupon.changeStatus(CouponStatus.DISABLED);
     }
     // 조회 메서드들은 readOnly 적용
 
@@ -90,6 +95,18 @@ public class CouponAdminService {
     private void validateAlreadyExistCoupon(CouponCreateRequest request) {
         if (couponRepository.existsActiveCodeAndNotDeleted(request.code())) {
             throw new CouponAlreadyExistException(COUPON_ALREADY_EXISTS_MESSAGE);
+        }
+    }
+
+    private void restrictUpdate(Coupon coupon) {
+        validateDisabled(coupon);
+        validateAlreadyUsedCoupon(coupon);
+        validateDeletedCoupon(coupon);
+    }
+
+    private void validateDisabled(Coupon coupon) {
+        if (coupon.getStatus() == CouponStatus.DISABLED) {
+            throw new CouponNotModifiableException(COUPON_NOT_MODIFIABLE_ERROR_MESSAGE);
         }
     }
 
