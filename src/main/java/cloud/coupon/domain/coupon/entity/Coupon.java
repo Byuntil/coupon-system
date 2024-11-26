@@ -86,15 +86,6 @@ public class Coupon {
         this.expireTime = request.expireTime();
     }
 
-    private void validateUpdateTime(LocalDateTime startTime, LocalDateTime endTime, LocalDateTime expireTime) {
-        if (startTime.isAfter(endTime)) {
-            throw new IllegalArgumentException("발급 시작 시간은 종료 시간보다 이전이어야 합니다.");
-        }
-        if (endTime.isAfter(expireTime)) {
-            throw new IllegalArgumentException("발급 종료 시간은 만료 시간보다 이전이어야 합니다.");
-        }
-    }
-
     //쿠폰 사용
     public void increaseUsedCount() {
         this.usedCount++;
@@ -102,6 +93,7 @@ public class Coupon {
 
     public void markAsDeleted() {
         this.isDeleted = true;
+        changeStatus(CouponStatus.DISABLED);
     }
 
     public void changeStatus(CouponStatus newStatus) {
@@ -119,6 +111,15 @@ public class Coupon {
     public void validateForUse() {
         if (!isAvailable()) {
             throw new CouponNotAvailableException("사용 불가능한 쿠폰입니다.");
+        }
+    }
+
+    private void validateUpdateTime(LocalDateTime startTime, LocalDateTime endTime, LocalDateTime expireTime) {
+        if (startTime.isAfter(endTime)) {
+            throw new IllegalArgumentException("발급 시작 시간은 종료 시간보다 이전이어야 합니다.");
+        }
+        if (endTime.isAfter(expireTime)) {
+            throw new IllegalArgumentException("발급 종료 시간은 만료 시간보다 이전이어야 합니다.");
         }
     }
 
