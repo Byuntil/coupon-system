@@ -93,7 +93,6 @@ public class Coupon {
 
     public void markAsDeleted() {
         this.isDeleted = true;
-        changeStatus(CouponStatus.DISABLED);
     }
 
     public void changeStatus(CouponStatus newStatus) {
