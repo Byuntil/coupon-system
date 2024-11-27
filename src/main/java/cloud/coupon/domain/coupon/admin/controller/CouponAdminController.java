@@ -63,7 +63,7 @@ public class CouponAdminController {
 
     @GetMapping("/status/{code}")
     public ResponseEntity<CouponStatusResponse> getCouponStatus(@PathVariable String code) {
-        CouponStatusResponse status = couponAdminService.getCouponStatus(code);
+        CouponStatusResponse status = couponAdminService.getNotDeletedCouponStatus(code);
         return ResponseEntity.ok(status);
     }
 }
