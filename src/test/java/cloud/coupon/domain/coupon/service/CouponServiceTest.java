@@ -151,7 +151,7 @@ class CouponServiceTest {
                 new CouponIssueRequest(code, userId, requestIp));// 쿠폰 발급
 
         // when
-        couponService.useCoupon(couponIssueResult.getCouponCode(), userId);
+        couponService.useCoupon(userId, couponIssueResult.getCouponCode());
 
         // then
         CouponIssue couponIssue = couponIssueRepository.findByIssuedCodeAndUserId(couponIssueResult.getCouponCode(),
@@ -166,7 +166,7 @@ class CouponServiceTest {
     void useCoupon_couponIssueNotFound() {
         // when & then
         assertThatThrownBy(() ->
-                couponService.useCoupon("INVALID_CODE", userId))
+                couponService.useCoupon(userId, "INVALID_CODE"))
                 .isInstanceOf(CouponIssueNotFoundException.class)
                 .hasMessageContaining(COUPON_ISSUE_NOT_FOUND_MESSAGE);
     }
