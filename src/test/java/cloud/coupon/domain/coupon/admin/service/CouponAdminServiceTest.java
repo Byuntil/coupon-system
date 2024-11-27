@@ -1,6 +1,7 @@
 package cloud.coupon.domain.coupon.admin.service;
 
 import static cloud.coupon.domain.coupon.constant.ErrorMessage.COUPON_ALREADY_DELETED_ERROR_MESSAGE;
+import static cloud.coupon.domain.coupon.constant.ErrorMessage.COUPON_ALREADY_DISABLED_ERROR_MESSAGE;
 import static cloud.coupon.domain.coupon.constant.ErrorMessage.COUPON_ALREADY_EXISTS_MESSAGE;
 import static cloud.coupon.domain.coupon.constant.ErrorMessage.COUPON_ALREADY_USED_ERROR_MESSAGE;
 import static cloud.coupon.domain.coupon.constant.ErrorMessage.COUPON_NOT_FOUND_MESSAGE;
@@ -12,8 +13,10 @@ import cloud.coupon.domain.coupon.admin.dto.request.CouponCreateRequest;
 import cloud.coupon.domain.coupon.admin.dto.request.CouponUpdateRequest;
 import cloud.coupon.domain.coupon.admin.dto.response.CouponResponse;
 import cloud.coupon.domain.coupon.entity.Coupon;
+import cloud.coupon.domain.coupon.entity.CouponStatus;
 import cloud.coupon.domain.coupon.repository.CouponRepository;
 import cloud.coupon.global.error.exception.coupon.CouponAlreadyDeletedException;
+import cloud.coupon.global.error.exception.coupon.CouponAlreadyDisabledException;
 import cloud.coupon.global.error.exception.coupon.CouponAlreadyExistException;
 import cloud.coupon.global.error.exception.coupon.CouponAlreadyUsedException;
 import cloud.coupon.global.error.exception.coupon.CouponNotFoundException;
@@ -188,6 +191,47 @@ class CouponAdminServiceTest {
             assertThatThrownBy(() -> couponAdminService.deleteCoupon(createdCoupon.id()))
                     .isInstanceOf(CouponAlreadyUsedException.class)
                     .hasMessage(COUPON_ALREADY_USED_ERROR_MESSAGE);
+        }
+    }
+
+    @Nested
+    @DisplayName("disableCoupon 메서드는")
+    class DisableCouponTest {
+        @Test
+        @DisplayName("쿠폰의 상태를 disabled로 변경한다.")
+        void disableCouponTest() {
+            // given
+            CouponCreateRequest request = CouponFixture.createRequest();
+            CouponResponse createdCoupon = couponAdminService.createCoupon(request);
+
+            // when
+            couponAdminService.deleteCoupon(createdCoupon.id());
+            System.out.println("createdCoupon.code() = " + createdCoupon.code());
+            Coupon deleteAfterCoupon = couponRepository.findByCode(createdCoupon.code()).get();
+            // then
+            assertThat(deleteAfterCoupon.getStatus()).isEqualTo(CouponStatus.DISABLED);
+            assertThat(deleteAfterCoupon.isDeleted()).isTrue();
+        }
+
+        @Test
+        @DisplayName("존재하지 않은 쿠폰의 상태를 변경하려고 하면 예외를 던진다.")
+        void disableNotExistCoupon() {
+            assertThatThrownBy(() -> couponAdminService.disableCoupon(999L))
+                    .isInstanceOf(CouponNotFoundException.class)
+                    .hasMessage(COUPON_NOT_FOUND_MESSAGE);
+        }
+
+        @Test
+        @DisplayName("이미 삭제된 쿠폰의 상태를 변경하려고 하면 예외를 던진다")
+        void disableCouponAlreadyDisabledTest() {
+            //given
+            CouponCreateRequest request = CouponFixture.createRequest();
+            CouponResponse createdCoupon = couponAdminService.createCoupon(request);
+            couponAdminService.deleteCoupon(createdCoupon.id());
+            // when// then
+            assertThatThrownBy(() -> couponAdminService.disableCoupon(createdCoupon.id()))
+                    .isInstanceOf(CouponAlreadyDisabledException.class)
+                    .hasMessage(COUPON_ALREADY_DISABLED_ERROR_MESSAGE);
         }
     }
 }

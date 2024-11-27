@@ -64,7 +64,7 @@ public class CouponAdminService {
         validateDeletedCoupon(coupon);
 
         coupon.markAsDeleted();
-        coupon.changeStatus(CouponStatus.EXPIRED);
+        coupon.changeStatus(CouponStatus.DISABLED);
     }
 
     // 쿠폰 비활성화 - 데이터 수정 필요
@@ -87,6 +87,12 @@ public class CouponAdminService {
     }
 
     public CouponStatusResponse getCouponStatus(String code) {
+        Coupon coupon = couponRepository.findByCode(code)
+                .orElseThrow(() -> new CouponNotFoundException(COUPON_NOT_FOUND_MESSAGE));
+        return CouponStatusResponse.from(coupon);
+    }
+
+    public CouponStatusResponse getNotDeletedCouponStatus(String code) {
         Coupon coupon = couponRepository.findByCodeAndIsDeletedFalse(code)
                 .orElseThrow(() -> new CouponNotFoundException(COUPON_NOT_FOUND_MESSAGE));
         return CouponStatusResponse.from(coupon);
