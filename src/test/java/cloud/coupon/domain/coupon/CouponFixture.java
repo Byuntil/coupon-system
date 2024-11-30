@@ -23,7 +23,6 @@ public class CouponFixture {
     public static CouponUpdateRequest createUpdateRequest() {
         return new CouponUpdateRequest(
                 "변경된 쿠폰",
-                100,
                 CouponType.FIXED_AMOUNT,
                 1000,
                 LocalDateTime.now(),
