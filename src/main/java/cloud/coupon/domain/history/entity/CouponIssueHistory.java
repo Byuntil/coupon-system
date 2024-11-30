@@ -1,15 +1,12 @@
 package cloud.coupon.domain.history.entity;
 
-import cloud.coupon.domain.coupon.entity.Coupon;
 import cloud.coupon.domain.coupon.entity.IssueResult;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
-import jakarta.persistence.FetchType;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import jakarta.persistence.ManyToOne;
 import java.time.LocalDateTime;
 import lombok.AccessLevel;
 import lombok.Builder;
@@ -24,8 +21,7 @@ public class CouponIssueHistory {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    private Coupon coupon;
+    private String code;
 
     private Long userId;
     private String requestIp;              // 요청 IP
@@ -36,8 +32,8 @@ public class CouponIssueHistory {
     private String failReason;             // 실패 사유
 
     @Builder
-    public CouponIssueHistory(Coupon coupon, Long userId, String requestIp, IssueResult result, String failReason) {
-        this.coupon = coupon;
+    public CouponIssueHistory(String code, Long userId, String requestIp, IssueResult result, String failReason) {
+        this.code = code;
         this.userId = userId;
         this.requestIp = requestIp;
         this.requestTime = LocalDateTime.now();

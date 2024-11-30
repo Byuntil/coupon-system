@@ -16,7 +16,7 @@ public interface CouponIssueHistoryRepository extends JpaRepository<CouponIssueH
     List<CouponIssueHistory> findByUserIdOrderByRequestTimeDesc(Long userId);
 
     //특정 쿠폰에 대한 사용자의 발급 이력
-    Optional<CouponIssueHistory> findByCouponCodeAndUserId(String couponId, Long userId);
+    Optional<CouponIssueHistory> findByCodeAndUserId(String code, Long userId);
 
     //성공/실패 여부로 조회
     List<CouponIssueHistory> findByUserIdAndResult(Long userId, IssueResult result);
