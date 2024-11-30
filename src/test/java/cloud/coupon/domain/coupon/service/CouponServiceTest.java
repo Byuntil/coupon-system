@@ -17,6 +17,7 @@ import cloud.coupon.domain.history.entity.CouponIssueHistory;
 import cloud.coupon.domain.history.repository.CouponIssueHistoryRepository;
 import cloud.coupon.global.error.exception.coupon.CouponNotFoundException;
 import cloud.coupon.global.error.exception.couponissue.CouponIssueNotFoundException;
+import cloud.coupon.infra.redis.service.RedisStockService;
 import java.time.LocalDateTime;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -41,6 +42,9 @@ class CouponServiceTest {
     @Autowired
     private CouponIssueHistoryRepository couponIssueHistoryRepository;
 
+    @Autowired
+    private RedisStockService redisStockService;
+
     private String code;
     private final Long userId = 1L;
     private final String requestIp = "127.0.0.1";
@@ -50,7 +54,8 @@ class CouponServiceTest {
         couponRepository.deleteAll();
         couponIssueRepository.deleteAll();
         couponIssueHistoryRepository.deleteAll();
-
+        // Redis 초기화
+        redisStockService.deleteAllKeys(); // Redis의 모든 쿠폰 관련 키 삭제
         // 테스트용 쿠폰 생성
         Coupon coupon = Coupon.builder()
                 .name("테스트 쿠폰")
@@ -62,6 +67,7 @@ class CouponServiceTest {
                 .build();
 
         code = couponRepository.save(coupon).getCode();
+        redisStockService.syncStockWithDB(code, coupon.getRemainStock());
     }
 
     @Test
@@ -84,7 +90,7 @@ class CouponServiceTest {
 
         // 히스토리 확인
         CouponIssueHistory history = couponIssueHistoryRepository
-                .findByCouponCodeAndUserId(code, userId)
+                .findByCodeAndUserId(code, userId)
                 .orElseThrow();
         assertThat(history.getResult()).isEqualTo(IssueResult.SUCCESS);
     }
@@ -138,7 +144,7 @@ class CouponServiceTest {
 
         // 히스토리 확인
         CouponIssueHistory history = couponIssueHistoryRepository
-                .findByCouponCodeAndUserId(code, userId + 10)
+                .findByCodeAndUserId(code, userId + 10)
                 .orElseThrow();
         assertThat(history.getResult()).isEqualTo(IssueResult.FAIL);
     }
