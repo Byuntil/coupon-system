@@ -20,6 +20,7 @@ import cloud.coupon.global.error.exception.coupon.CouponAlreadyExistException;
 import cloud.coupon.global.error.exception.coupon.CouponAlreadyUsedException;
 import cloud.coupon.global.error.exception.coupon.CouponNotFoundException;
 import cloud.coupon.global.error.exception.coupon.CouponNotModifiableException;
+import cloud.coupon.infra.redis.service.RedisStockService;
 import java.util.List;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -31,6 +32,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class CouponAdminService {
 
     private final CouponRepository couponRepository;
+    private final RedisStockService redisStockService;
 
     // 쿠폰 생성 - 데이터 수정 필요
     @Transactional
@@ -38,6 +40,7 @@ public class CouponAdminService {
         validateAlreadyExistCoupon(request);
 
         Coupon savedCoupon = couponRepository.save(request.toEntity());
+        redisStockService.initializeStock(request.code(), request.totalStock());
         return CouponResponse.from(savedCoupon);
     }
 
@@ -65,6 +68,8 @@ public class CouponAdminService {
 
         coupon.markAsDeleted();
         coupon.changeStatus(CouponStatus.DISABLED);
+
+        redisStockService.deleteStock(coupon.getCode());
     }
 
     // 쿠폰 비활성화 - 데이터 수정 필요
