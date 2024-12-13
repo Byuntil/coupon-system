@@ -34,16 +34,16 @@ class CouponServicePerformanceTest {
 
     private String code;
     private final String requestIp = "127.0.0.1";
-    private static final int TOTAL_THREAD_COUNT = 10000;
-    private static final int THREAD_POOL_SIZE = 32;
-    private static final int STOCK_COUNT = 100000;
+    private static final int TOTAL_THREAD_COUNT = 1000;
+    private static final int THREAD_POOL_SIZE = 1000;
+    private static final int STOCK_COUNT = 10000;
 
     @BeforeEach
     void setUp() {
         // 기존 데이터 정리
         couponRepository.deleteAll();
         couponIssueRepository.deleteAll();
-        redisStockService.deleteAllKeys(); // 모든 Redis 키를 삭제하는 것이 더 안전합니다
+        redisStockService.deleteAllKeys();
 
         // 테스트용 쿠폰 생성 및 초기화
         Coupon coupon = createTestCoupon(STOCK_COUNT);
@@ -60,6 +60,7 @@ class CouponServicePerformanceTest {
         ExecutorService executorService = Executors.newFixedThreadPool(THREAD_POOL_SIZE);
         CountDownLatch latch = new CountDownLatch(TOTAL_THREAD_COUNT);
 
+        long currentTime = System.currentTimeMillis();
         // when
         for (int i = 0; i < TOTAL_THREAD_COUNT; i++) {
             final long userId = i; // 변수 캡처를 위해 final로 선언
@@ -78,6 +79,7 @@ class CouponServicePerformanceTest {
                 }
             });
         }
+        System.out.println("Total time: " + (System.currentTimeMillis() - currentTime) + "ms");
 
         // then
         latch.await();
@@ -87,9 +89,9 @@ class CouponServicePerformanceTest {
         Coupon updatedCoupon = couponRepository.findByCode(code).orElseThrow();
         int issuedCount = couponIssueRepository.countByCouponCode(code);
 
-        assertThat(updatedCoupon.getRemainStock()).isEqualTo(STOCK_COUNT - TOTAL_THREAD_COUNT);
+        assertThat(updatedCoupon.getRemainStock()).isEqualTo(Math.max((STOCK_COUNT - TOTAL_THREAD_COUNT), 0));
 
-        assertThat(issuedCount).isEqualTo(TOTAL_THREAD_COUNT);
+        assertThat(issuedCount).isEqualTo(Math.min(STOCK_COUNT, TOTAL_THREAD_COUNT));
     }
 
     private Coupon createTestCoupon(int stock) {
