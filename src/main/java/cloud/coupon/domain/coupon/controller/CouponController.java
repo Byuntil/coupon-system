@@ -21,11 +21,17 @@ public class CouponController {
 
     @PostMapping("/issue")
     public ResponseEntity<CouponIssueResult> issueCoupon(@RequestBody CouponIssueRequest request) {
-        CouponIssueResult result = couponService.issueCoupon(request);
-        if (result.isSuccess()) {
-            return ResponseEntity.status(HttpStatus.CREATED).body(result);
+        try {
+            CouponIssueResult result = couponService.issueCoupon(request);
+
+            if (result.isSuccess()) {
+                return ResponseEntity.status(HttpStatus.CREATED).body(result);
+            }
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(result);
+        } catch (Exception e) {
+            System.out.println("e.getMessage() = " + e.getMessage());
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build();
         }
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(result);
     }
 
     @PostMapping("/use")
