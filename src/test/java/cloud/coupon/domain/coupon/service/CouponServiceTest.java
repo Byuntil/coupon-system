@@ -1,5 +1,6 @@
 package cloud.coupon.domain.coupon.service;
 
+import static cloud.coupon.domain.coupon.constant.ErrorMessage.COUPON_DUPLICATE_ERROR_MESSAGE;
 import static cloud.coupon.domain.coupon.constant.ErrorMessage.COUPON_ISSUE_NOT_FOUND_MESSAGE;
 import static cloud.coupon.domain.coupon.constant.ErrorMessage.COUPON_NOT_FOUND_MESSAGE;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -16,10 +17,10 @@ import cloud.coupon.domain.coupon.repository.CouponRepository;
 import cloud.coupon.domain.history.entity.CouponIssueHistory;
 import cloud.coupon.domain.history.repository.CouponIssueHistoryRepository;
 import cloud.coupon.global.error.exception.coupon.CouponNotFoundException;
+import cloud.coupon.global.error.exception.coupon.DuplicateCouponException;
 import cloud.coupon.global.error.exception.couponissue.CouponIssueNotFoundException;
 import cloud.coupon.infra.redis.service.RedisStockService;
 import java.time.LocalDateTime;
-import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -102,16 +103,10 @@ class CouponServiceTest {
         couponService.issueCoupon(new CouponIssueRequest(code, userId, requestIp));
 
         // when & then
-        CouponIssueResult couponIssueResult = couponService.issueCoupon(
-                new CouponIssueRequest(code, userId, requestIp));
-
-        assertThat(couponIssueResult.isSuccess()).isFalse();
-        // 히스토리 확인
-        List<CouponIssueHistory> histories = couponIssueHistoryRepository
-                .findByUserIdOrderByRequestTimeDesc(userId);
-
-        assertThat(histories).hasSize(2);
-        assertThat(histories.getFirst().getResult()).isEqualTo(IssueResult.FAIL);
+        assertThatThrownBy(() -> couponService.issueCoupon(
+                new CouponIssueRequest(code, userId, requestIp)))
+                .isInstanceOf(DuplicateCouponException.class)
+                .hasMessage(COUPON_DUPLICATE_ERROR_MESSAGE);
     }
 
     @Test
