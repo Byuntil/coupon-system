@@ -1,5 +1,7 @@
 package cloud.coupon.infra.redis.service;
 
+import static cloud.coupon.domain.coupon.constant.ErrorMessage.COUPON_NOT_FOUND_MESSAGE;
+
 import cloud.coupon.domain.coupon.entity.Coupon;
 import cloud.coupon.domain.coupon.repository.CouponRepository;
 import cloud.coupon.global.error.exception.coupon.CouponNotFoundException;
@@ -82,11 +84,16 @@ public class RedisStockService {
 
     public boolean decreaseStock(String couponCode) {
         String key = STOCK_KEY_PREFIX + couponCode;
+        if (!redisTemplate.hasKey(key)) {
+            log.error("[{}]: 존재하지 않은 쿠폰", couponCode);
+            throw new CouponNotFoundException(COUPON_NOT_FOUND_MESSAGE);
+        }
         Long remainStock = redisTemplate.opsForValue().decrement(key);
         if (remainStock == null || remainStock < 0) {
             //재고가 부족한 경우 원복
             if (remainStock != null) {
                 redisTemplate.opsForValue().increment(key);
+                log.warn("[{}]: 쿠폰 재고 부족", couponCode);
             }
             return false;
         }
