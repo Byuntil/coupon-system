@@ -127,7 +127,7 @@ public class Coupon {
         }
 
         LocalDateTime now = LocalDateTime.now();
-        if (now.isBefore(startTime) || now.isAfter(expireTime)) {
+        if (now.isBefore(startTime) || now.isAfter(endTime)) {
             throw new CouponNotAvailableException("쿠폰 발급 기간이 아닙니다.");
         }
     }
