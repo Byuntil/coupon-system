@@ -23,7 +23,6 @@ import cloud.coupon.global.error.exception.couponissue.CouponIssueNotFoundExcept
 import cloud.coupon.infra.redis.service.RedisStockService;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.concurrent.atomic.AtomicLong;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -35,8 +34,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class CouponService {
     private final AtomicInteger currentLoadFactor = new AtomicInteger(0);
-    private final AtomicLong successCount = new AtomicLong(0);
-    private final AtomicLong failureCount = new AtomicLong(0);
 
     private final CouponRepository couponRepository;
     private final CouponIssueRepository couponIssueRepository;
@@ -71,7 +68,6 @@ public class CouponService {
         try {
             //3. 쿠폰 발급을 위한 lock 획득
             if (!redisStockService.acquireLock(request.code(), requestId)) {
-                failureCount.incrementAndGet();
                 saveCouponIssueHistory(request.code(), request.userId(), request.requestIp(),
                         IssueResult.FAIL, "분산 락 획득 실패");
                 return CouponIssueResult.fail("서버가 혼잡합니다. 잠시 후 다시 시도해주세요.");
@@ -79,11 +75,10 @@ public class CouponService {
 
             return getCouponIssueResult(request, requestId);
         } finally {
-            log.info("[{}]: 발급 요청 처리 완료 | 소요시간: {}ms | 부하: {} | 성공률: {}%",
+            log.info("[{}]: 발급 요청 처리 완료 | 소요시간: {}ms | 부하: {}",
                     request.code(),
                     System.currentTimeMillis() - startTime,
-                    currentLoadFactor.get(),
-                    String.format("%.2f", calculateSuccessRate())
+                    currentLoadFactor.get()
             );
         }
     }
@@ -101,7 +96,6 @@ public class CouponService {
     private CouponIssueResult processIssuanceWithLock(CouponIssueRequest request, String requestId) {
         // 4. Redis 재고 감소 시도
         if (!attemptToDecreaseStock(request.code(), requestId)) {
-            failureCount.incrementAndGet();
             saveCouponIssueHistory(request.code(), request.userId(), request.requestIp(),
                     IssueResult.FAIL, "재고 소진");
             return CouponIssueResult.fail("쿠폰이 모두 소진되었습니다.");
@@ -114,7 +108,6 @@ public class CouponService {
         } catch (Exception e) {
             // 실패 시 Redis 재고 복구
             redisStockService.increaseStock(request.code());
-            failureCount.incrementAndGet();
             saveCouponIssueHistory(request.code(), request.userId(), request.requestIp(),
                     IssueResult.FAIL, e.getMessage());
             return CouponIssueResult.fail(e.getMessage());
@@ -158,7 +151,6 @@ public class CouponService {
                     null
             );
 
-            successCount.incrementAndGet();
             log.info("[{}]: 쿠폰 발급 성공 | requestId: {} userId: {}",
                     request.code(), requestId, request.userId());
 
@@ -202,14 +194,6 @@ public class CouponService {
             log.error("발급 이력 저장 실패 | code: {} userId: {} result: {} | 원인: {}",
                     code, userId, result, e.getMessage());
         }
-    }
-
-    private double calculateSuccessRate() {
-        long totalAttempts = successCount.get() + failureCount.get();
-        if (totalAttempts == 0) {
-            return 100.0;
-        }
-        return (successCount.get() * 100.0) / totalAttempts;
     }
 
     // 쿠폰 사용 관련 메서드
