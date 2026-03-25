@@ -84,66 +84,36 @@ public class RedisStockService {
 
     public boolean decreaseStock(String couponCode) {
         String key = STOCK_KEY_PREFIX + couponCode;
-        if (!redisTemplate.hasKey(key)) {
+        String script =
+                "local current = redis.call('get', KEYS[1]) " +
+                "if not current then " +
+                "    return -2 " +
+                "end " +
+                "if tonumber(current) <= 0 then " +
+                "    return -1 " +
+                "end " +
+                "return redis.call('decr', KEYS[1])";
+
+        long result = redisTemplate.execute(
+                new DefaultRedisScript<>(script, Long.class),
+                Collections.singletonList(key)
+        );
+
+        if (result == -2) {
             log.error("[{}]: 존재하지 않은 쿠폰", couponCode);
             throw new CouponNotFoundException(COUPON_NOT_FOUND_MESSAGE);
         }
-        Long remainStock = redisTemplate.opsForValue().decrement(key);
-        if (remainStock == null || remainStock < 0) {
-            //재고가 부족한 경우 원복
-            if (remainStock != null) {
-                redisTemplate.opsForValue().increment(key);
-                log.warn("[{}]: 쿠폰 재고 부족", couponCode);
-            }
+        if (result < 0) {
+            log.warn("[{}]: 쿠폰 재고 부족", couponCode);
             return false;
         }
         return true;
     }
 
-    public void deleteStock(String couponCode) {
+    public void removeStockKey(String couponCode) {
         String key = STOCK_KEY_PREFIX + couponCode;
-
-        String currentStock = redisTemplate.opsForValue().get(key);
-
-        if (currentStock == null) {
-            log.warn("[{}] Redis에 재고 정보가 없습니다. DB에서 동기화를 시도합니다.", couponCode);
-
-            Coupon coupon = couponRepository.findByCodeAndIsDeletedFalse(couponCode)
-                    .orElseThrow(() -> new CouponNotFoundException("쿠폰을 찾을 수 없습니다."));
-
-            syncStockWithDB(couponCode, coupon.getRemainStock());
-            currentStock = String.valueOf(coupon.getRemainStock());
-        }
-
-        if (Integer.parseInt(currentStock) <= 0) {
-            log.info("[{}] 재고 부족으로 쿠폰 발급 실패. 현재 재고: {}", couponCode, currentStock);
-            return;
-        }
-
-        try {
-            String script =
-                    "local current = redis.call('get', KEYS[1]) " +
-                            "if current and tonumber(current) > 0 then " +
-                            "   return redis.call('decr', KEYS[1]) " +
-                            "else " +
-                            "   return -1 " +
-                            "end";
-
-            Long remainStock = redisTemplate.execute(
-                    new DefaultRedisScript<>(script, Long.class),
-                    Collections.singletonList(key)
-            );
-
-            if (remainStock < 0) {
-                log.info("[{}] 재고 감소 실패. 남은 재고: {}", couponCode, remainStock);
-                return;
-            }
-
-            log.debug("[{}] 재고 감소 성공. 남은 재고: {}", couponCode, remainStock);
-        } catch (Exception e) {
-            log.error("[{}] 재고 감소 중 오류 발생: {}", couponCode, e.getMessage(), e);
-            throw new RedisOperationException("재고 감소 처리 중 오류가 발생했습니다.");
-        }
+        redisTemplate.delete(key);
+        log.info("[{}] Redis 재고 키 삭제 완료", couponCode);
     }
 
     public void deleteAllKeys() {
@@ -156,10 +126,9 @@ public class RedisStockService {
 
     public void syncStockWithDB(String code, int dbStock) {
         String stockKey = STOCK_KEY_PREFIX + code;
-        String lockKey = LOCK_KEY_PREFIX + code;
         String lockValue = UUID.randomUUID().toString();
 
-        boolean locked = acquireLock(lockKey, lockValue);
+        boolean locked = acquireLock(code, lockValue);
         if (!locked) {
             log.warn("[{}] 재고 동기화를 위한 락 획득 실패", code);
             throw new RedisLockException("재고 동기화를 위한 락 획득에 실패했습니다.");
@@ -187,7 +156,7 @@ public class RedisStockService {
             log.error("[{}] Redis-DB 재고 동기화 실패: {}", code, e.getMessage(), e);
             throw new RedisOperationException("Redis-DB 재고 동기화 중 오류가 발생했습니다.");
         } finally {
-            releaseLock(lockKey, lockValue);
+            releaseLock(code, lockValue);
         }
     }
 

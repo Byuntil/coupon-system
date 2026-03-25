@@ -69,7 +69,7 @@ public class CouponAdminService {
         coupon.markAsDeleted();
         coupon.changeStatus(CouponStatus.DISABLED);
 
-        redisStockService.deleteStock(coupon.getCode());
+        redisStockService.removeStockKey(coupon.getCode());
     }
 
     // 쿠폰 비활성화 - 데이터 수정 필요
@@ -87,7 +87,7 @@ public class CouponAdminService {
     // 조회 메서드들은 readOnly 적용
 
     public List<CouponStatusResponse> getCouponStatistics() {
-        // 통계 조회 로직
+        //TODO: 통계 조회 로직 구현
         return null;
     }
 
