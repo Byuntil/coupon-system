@@ -16,6 +16,8 @@ import cloud.coupon.domain.coupon.repository.CouponIssueRepository;
 import cloud.coupon.domain.coupon.repository.CouponRepository;
 import cloud.coupon.domain.history.entity.CouponIssueHistory;
 import cloud.coupon.domain.history.repository.CouponIssueHistoryRepository;
+import cloud.coupon.domain.coupon.service.strategy.CouponIssuanceStrategy;
+import cloud.coupon.domain.coupon.service.strategy.RedisCouponIssuanceStrategy;
 import cloud.coupon.global.error.exception.coupon.CouponNotFoundException;
 import cloud.coupon.global.error.exception.coupon.DuplicateCouponException;
 import cloud.coupon.global.error.exception.couponissue.CouponIssueNotFoundException;
@@ -24,12 +26,16 @@ import java.time.LocalDateTime;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.system.CapturedOutput;
+import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.transaction.annotation.Transactional;
 
 @SpringBootTest
 @Transactional
+@ExtendWith(OutputCaptureExtension.class)
 class CouponServiceTest {
     @Autowired
     private CouponService couponService;
@@ -44,31 +50,44 @@ class CouponServiceTest {
     private CouponIssueHistoryRepository couponIssueHistoryRepository;
 
     @Autowired
+    private CouponIssuanceStrategy issuanceStrategy;
+
+    @Autowired
     private RedisStockService redisStockService;
 
     private String code;
     private final Long userId = 1L;
     private final String requestIp = "127.0.0.1";
 
+    private boolean isRedisStrategy() {
+        return issuanceStrategy instanceof RedisCouponIssuanceStrategy;
+    }
+
     @BeforeEach
     void setUp() {
         couponRepository.deleteAll();
         couponIssueRepository.deleteAll();
         couponIssueHistoryRepository.deleteAll();
-        // Redis 초기화
-        redisStockService.deleteAllKeys(); // Redis의 모든 쿠폰 관련 키 삭제
+
+        if (isRedisStrategy()) {
+            redisStockService.deleteAllKeys();
+        }
+
         // 테스트용 쿠폰 생성
         Coupon coupon = Coupon.builder()
                 .name("테스트 쿠폰")
                 .code("TEST-0001")
                 .totalStock(10)
-                .startTime(LocalDateTime.of(2023, 1, 1, 0, 0))
-                .endTime(LocalDateTime.of(2024, 1, 31, 23, 59))
-                .expireTime(LocalDateTime.of(3000, 1, 31, 23, 59))
+                .startTime(LocalDateTime.now().minusDays(1))
+                .endTime(LocalDateTime.now().plusDays(1))
+                .expireTime(LocalDateTime.now().plusDays(30))
                 .build();
 
         code = couponRepository.save(coupon).getCode();
-        redisStockService.syncStockWithDB(code, coupon.getRemainStock());
+
+        if (isRedisStrategy()) {
+            redisStockService.syncStockWithDB(code, coupon.getRemainStock());
+        }
     }
 
     @Test
@@ -94,6 +113,17 @@ class CouponServiceTest {
                 .findByCodeAndUserId(code, userId)
                 .orElseThrow();
         assertThat(history.getResult()).isEqualTo(IssueResult.SUCCESS);
+    }
+
+    @Test
+    @DisplayName("발급 로그에 성공률 계측 문구를 남기지 않는다")
+    void issueCoupon_logDoesNotContainRateMetrics(CapturedOutput output) {
+        // when
+        couponService.issueCoupon(new CouponIssueRequest(code, userId, requestIp));
+
+        // then
+        assertThat(output.getOut()).doesNotContain("발급 비율");
+        assertThat(output.getOut()).doesNotContain("시스템 정상 처리율");
     }
 
     @Test

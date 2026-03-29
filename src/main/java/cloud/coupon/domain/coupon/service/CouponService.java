@@ -20,7 +20,7 @@ import cloud.coupon.domain.history.repository.CouponUseHistoryRepository;
 import cloud.coupon.global.error.exception.coupon.CouponNotFoundException;
 import cloud.coupon.global.error.exception.coupon.DuplicateCouponException;
 import cloud.coupon.global.error.exception.couponissue.CouponIssueNotFoundException;
-import cloud.coupon.infra.redis.service.RedisStockService;
+import cloud.coupon.domain.coupon.service.strategy.CouponIssuanceStrategy;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import lombok.RequiredArgsConstructor;
@@ -42,7 +42,7 @@ public class CouponService {
     private final CouponIssueHistoryRepository couponIssueHistoryRepository;
     private final CouponUseHistoryRepository couponUseHistoryRepository;
     private final CodeGenerator couponCodeGenerator;
-    private final RedisStockService redisStockService;
+    private final CouponIssuanceStrategy issuanceStrategy;
 
     //1. 쿠폰 발급
     @Transactional
@@ -69,7 +69,7 @@ public class CouponService {
 
         try {
             //3. 쿠폰 발급을 위한 lock 획득
-            if (!redisStockService.acquireLock(request.code(), requestId)) {
+            if (!issuanceStrategy.acquireLock(request.code(), requestId)) {
                 saveCouponIssueHistory(request.code(), request.userId(), request.requestIp(),
                         IssueResult.FAIL, "분산 락 획득 실패");
                 return CouponIssueResult.fail("서버가 혼잡합니다. 잠시 후 다시 시도해주세요.");
@@ -100,11 +100,11 @@ public class CouponService {
             TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
                 @Override
                 public void afterCompletion(int status) {
-                    redisStockService.releaseLock(code, requestId);
+                    issuanceStrategy.releaseLock(code, requestId);
                 }
             });
         } else {
-            redisStockService.releaseLock(code, requestId);
+            issuanceStrategy.releaseLock(code, requestId);
         }
     }
 
@@ -122,7 +122,7 @@ public class CouponService {
             return issueCouponAndRecordHistory(request, requestId, coupon);
         } catch (Exception e) {
             // 실패 시 Redis 재고 복구
-            redisStockService.increaseStock(request.code());
+            issuanceStrategy.increaseStock(request.code());
             saveCouponIssueHistory(request.code(), request.userId(), request.requestIp(),
                     IssueResult.FAIL, e.getMessage());
             return CouponIssueResult.fail(e.getMessage());
@@ -131,7 +131,7 @@ public class CouponService {
 
     private boolean attemptToDecreaseStock(String couponCode, String requestId) {
         long stockCheckStart = System.currentTimeMillis();
-        boolean decreased = redisStockService.decreaseStock(couponCode);
+        boolean decreased = issuanceStrategy.decreaseStock(couponCode);
 
         log.debug("[{}]: 재고 감소 처리 시간: {}ms | requestId: {}",
                 couponCode,

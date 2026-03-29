@@ -1,6 +1,14 @@
 spring:
   profiles:
     active: local
+  data:
+    redis:
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+          max-wait: -1
 
 server:
   port: 8080

@@ -7,6 +7,8 @@ import cloud.coupon.domain.coupon.entity.Coupon;
 import cloud.coupon.domain.coupon.entity.CouponType;
 import cloud.coupon.domain.coupon.repository.CouponIssueRepository;
 import cloud.coupon.domain.coupon.repository.CouponRepository;
+import cloud.coupon.domain.coupon.service.strategy.CouponIssuanceStrategy;
+import cloud.coupon.domain.coupon.service.strategy.RedisCouponIssuanceStrategy;
 import cloud.coupon.infra.redis.service.RedisStockService;
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -30,28 +32,38 @@ class CouponServicePerformanceTest {
     private CouponIssueRepository couponIssueRepository;
 
     @Autowired
+    private CouponIssuanceStrategy issuanceStrategy;
+
+    @Autowired
     private RedisStockService redisStockService;
 
     private String code;
     private final String requestIp = "127.0.0.1";
     private static final int TOTAL_THREAD_COUNT = 1000;
     private static final int THREAD_POOL_SIZE = 1000;
-    private static final int STOCK_COUNT = 10000;
+    private static final int STOCK_COUNT = 100;
+
+    private boolean isRedisStrategy() {
+        return issuanceStrategy instanceof RedisCouponIssuanceStrategy;
+    }
 
     @BeforeEach
     void setUp() {
-        // 기존 데이터 정리
         couponRepository.deleteAll();
         couponIssueRepository.deleteAll();
-        redisStockService.deleteAllKeys();
 
-        // 테스트용 쿠폰 생성 및 초기화
+        if (isRedisStrategy()) {
+            redisStockService.deleteAllKeys();
+        }
+
         Coupon coupon = createTestCoupon(STOCK_COUNT);
         code = couponRepository.save(coupon).getCode();
 
-        // Redis 재고 초기화 전에 초기값 검증
         assertThat(coupon.getRemainStock()).isEqualTo(STOCK_COUNT);
-        redisStockService.syncStockWithDB(code, coupon.getRemainStock());
+
+        if (isRedisStrategy()) {
+            redisStockService.syncStockWithDB(code, coupon.getRemainStock());
+        }
     }
 
     @Test
@@ -79,10 +91,11 @@ class CouponServicePerformanceTest {
                 }
             });
         }
-        System.out.println("Total time: " + (System.currentTimeMillis() - currentTime) + "ms");
+
 
         // then
         latch.await();
+        System.out.println("Total time: " + (System.currentTimeMillis() - currentTime) + "ms");
         executorService.shutdown(); // 스레드 풀 정리
 
         // 결과 검증
