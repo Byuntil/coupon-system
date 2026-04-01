@@ -18,4 +18,6 @@ public interface CouponIssueRepository extends JpaRepository<CouponIssue, Long> 
     Optional<CouponIssue> findByIssuedCodeAndUserId(String code, Long userId); // 발급된 쿠폰 조회
 
     int countByCouponCode(String code);
+
+    void deleteByCouponId(Long couponId);
 }

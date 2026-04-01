@@ -20,4 +20,6 @@ public interface CouponIssueHistoryRepository extends JpaRepository<CouponIssueH
 
     //성공/실패 여부로 조회
     List<CouponIssueHistory> findByUserIdAndResult(Long userId, IssueResult result);
+
+    void deleteByCode(String code);
 }
