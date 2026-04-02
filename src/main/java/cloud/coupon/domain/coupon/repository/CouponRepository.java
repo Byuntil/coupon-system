@@ -18,6 +18,9 @@ public interface CouponRepository extends JpaRepository<Coupon, Long> {
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT c FROM Coupon c WHERE c.code = :code AND c.isDeleted = false")
+    Optional<Coupon> findByCodeWithLock(String code);
+
+    @Query("SELECT c FROM Coupon c WHERE c.code = :code AND c.isDeleted = false")
     Optional<Coupon> findByCodeAndIsDeletedFalse(String code);
 
     @Query("SELECT EXISTS (SELECT 1 FROM Coupon c WHERE c.code = :code AND c.isDeleted = false)")

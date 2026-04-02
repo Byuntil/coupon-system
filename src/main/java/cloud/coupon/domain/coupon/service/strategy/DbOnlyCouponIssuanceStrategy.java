@@ -30,4 +30,9 @@ public class DbOnlyCouponIssuanceStrategy implements CouponIssuanceStrategy {
     public void increaseStock(String couponCode) {
         // no-op: DB 트랜잭션 롤백으로 복구
     }
+
+    @Override
+    public boolean requiresDbLock() {
+        return true;
+    }
 }

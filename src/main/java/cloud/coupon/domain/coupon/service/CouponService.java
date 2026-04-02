@@ -120,8 +120,14 @@ public class CouponService {
             // 5. 쿠폰 존재 여부 확인 및 발급 처리
             Coupon coupon = findValidCoupon(request.code());
             return issueCouponAndRecordHistory(request, requestId, coupon);
+        } catch (CouponNotFoundException e) {
+            // 쿠폰 미존재: 재고 복구 후 예외 전파
+            issuanceStrategy.increaseStock(request.code());
+            saveCouponIssueHistory(request.code(), request.userId(), request.requestIp(),
+                    IssueResult.FAIL, e.getMessage());
+            throw e;
         } catch (Exception e) {
-            // 실패 시 Redis 재고 복구
+            // 기타 실패: Redis 재고 복구
             issuanceStrategy.increaseStock(request.code());
             saveCouponIssueHistory(request.code(), request.userId(), request.requestIp(),
                     IssueResult.FAIL, e.getMessage());
@@ -142,6 +148,10 @@ public class CouponService {
     }
 
     private Coupon findValidCoupon(String couponCode) {
+        if (issuanceStrategy.requiresDbLock()) {
+            return couponRepository.findByCodeWithLock(couponCode)
+                    .orElseThrow(() -> new CouponNotFoundException(COUPON_NOT_FOUND_MESSAGE));
+        }
         return couponRepository.findByCodeAndIsDeletedFalse(couponCode)
                 .orElseThrow(() -> new CouponNotFoundException(COUPON_NOT_FOUND_MESSAGE));
     }

@@ -33,4 +33,9 @@ public class RedisCouponIssuanceStrategy implements CouponIssuanceStrategy {
     public void increaseStock(String couponCode) {
         redisStockService.increaseStock(couponCode);
     }
+
+    @Override
+    public boolean requiresDbLock() {
+        return false;
+    }
 }

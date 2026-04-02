@@ -9,4 +9,6 @@ public interface CouponIssuanceStrategy {
     boolean decreaseStock(String couponCode);
 
     void increaseStock(String couponCode);
+
+    boolean requiresDbLock();
 }
