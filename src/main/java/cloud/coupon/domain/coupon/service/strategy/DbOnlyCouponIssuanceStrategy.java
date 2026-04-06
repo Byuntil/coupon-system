@@ -10,19 +10,14 @@ import org.springframework.stereotype.Component;
 public class DbOnlyCouponIssuanceStrategy implements CouponIssuanceStrategy {
 
     @Override
-    public boolean acquireLock(String couponCode, String requestId) {
-        // DB 비관적 락(SELECT FOR UPDATE)에 의존 — 별도 분산 락 불필요
+    public boolean hasStock(String couponCode) {
+        // no-op: DB 비관적 락과 decreaseRemainStockAtomically()에서 재고 확인
         return true;
     }
 
     @Override
-    public void releaseLock(String couponCode, String requestId) {
-        // no-op: DB 트랜잭션 종료 시 자동 해제
-    }
-
-    @Override
     public boolean decreaseStock(String couponCode) {
-        // no-op: DB의 Coupon.issue()에서 remainStock 감소
+        // no-op: DB의 decreaseRemainStockAtomically()에서 remainStock 감소
         return true;
     }
 

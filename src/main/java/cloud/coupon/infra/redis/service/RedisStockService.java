@@ -82,6 +82,16 @@ public class RedisStockService {
         }
     }
 
+    // fast-fail optimization only. correctness is decided by decreaseStock().
+    // Redis 키 자체가 없으면 true를 반환해 decreaseStock()에서 CouponNotFoundException을 던지게 한다.
+    public boolean hasStock(String couponCode) {
+        String value = redisTemplate.opsForValue().get(STOCK_KEY_PREFIX + couponCode);
+        if (value == null) {
+            return true; // 키 없음 — decreaseStock()이 -2 반환하며 CouponNotFoundException 처리
+        }
+        return Long.parseLong(value) > 0;
+    }
+
     public boolean decreaseStock(String couponCode) {
         String key = STOCK_KEY_PREFIX + couponCode;
         String script =

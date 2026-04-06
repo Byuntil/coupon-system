@@ -2,33 +2,26 @@ package cloud.coupon.domain.coupon.service;
 
 import static cloud.coupon.domain.coupon.constant.ErrorMessage.COUPON_DUPLICATE_ERROR_MESSAGE;
 import static cloud.coupon.domain.coupon.constant.ErrorMessage.COUPON_ISSUE_NOT_FOUND_MESSAGE;
-import static cloud.coupon.domain.coupon.constant.ErrorMessage.COUPON_NOT_FOUND_MESSAGE;
 
 import cloud.coupon.domain.coupon.dto.request.CouponIssueRequest;
 import cloud.coupon.domain.coupon.dto.response.CouponIssueResult;
 import cloud.coupon.domain.coupon.dto.response.CouponUseResponse;
-import cloud.coupon.domain.coupon.entity.Coupon;
 import cloud.coupon.domain.coupon.entity.CouponIssue;
-import cloud.coupon.domain.coupon.entity.IssueResult;
 import cloud.coupon.domain.coupon.repository.CouponIssueRepository;
 import cloud.coupon.domain.coupon.repository.CouponRepository;
-import cloud.coupon.domain.coupon.util.CodeGenerator;
-import cloud.coupon.domain.history.entity.CouponIssueHistory;
+import cloud.coupon.domain.coupon.service.strategy.CouponIssuanceStrategy;
+import cloud.coupon.domain.history.service.CouponIssueHistoryService;
 import cloud.coupon.domain.history.entity.CouponUseHistory;
-import cloud.coupon.domain.history.repository.CouponIssueHistoryRepository;
 import cloud.coupon.domain.history.repository.CouponUseHistoryRepository;
 import cloud.coupon.global.error.exception.coupon.CouponNotFoundException;
 import cloud.coupon.global.error.exception.coupon.DuplicateCouponException;
 import cloud.coupon.global.error.exception.couponissue.CouponIssueNotFoundException;
-import cloud.coupon.domain.coupon.service.strategy.CouponIssuanceStrategy;
-import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.transaction.support.TransactionSynchronization;
-import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Slf4j
 @Service
@@ -39,189 +32,112 @@ public class CouponService {
 
     private final CouponRepository couponRepository;
     private final CouponIssueRepository couponIssueRepository;
-    private final CouponIssueHistoryRepository couponIssueHistoryRepository;
     private final CouponUseHistoryRepository couponUseHistoryRepository;
-    private final CodeGenerator couponCodeGenerator;
     private final CouponIssuanceStrategy issuanceStrategy;
+    private final CouponIssuancePersistenceService couponIssuancePersistenceService;
+    private final CouponIssueHistoryService couponIssueHistoryService;
 
-    //1. 쿠폰 발급
-    @Transactional
+    // 쿠폰 발급 — 오케스트레이터 (트랜잭션 없음: Redis·DB 경로 각각 자체 트랜잭션)
     public CouponIssueResult issueCoupon(CouponIssueRequest request) {
-        String requestId = UUID.randomUUID().toString();
-        log.debug("[{}]: 쿠폰 발급 시도 시작 | requestId: {} userId: {}",
-                request.code(), requestId, request.userId());
+        log.debug("[{}]: 쿠폰 발급 시도 시작 | userId: {}", request.code(), request.userId());
 
-        //2. 중복 발급 검증
-        validateDuplicateIssue(request.code(), request.userId());
-
-        return processCouponIssueRequest(request, requestId);
-    }
-
-    private void validateDuplicateIssue(String code, Long userId) {
-        if (couponIssueRepository.existsByCouponCodeAndUserId(code, userId)) {
-            throw new DuplicateCouponException(COUPON_DUPLICATE_ERROR_MESSAGE);
-        }
-    }
-
-    private CouponIssueResult processCouponIssueRequest(CouponIssueRequest request, String requestId) {
         long startTime = System.currentTimeMillis();
         currentLoadFactor.incrementAndGet();
-
         try {
-            //3. 쿠폰 발급을 위한 lock 획득
-            if (!issuanceStrategy.acquireLock(request.code(), requestId)) {
-                saveCouponIssueHistory(request.code(), request.userId(), request.requestIp(),
-                        IssueResult.FAIL, "분산 락 획득 실패");
-                return CouponIssueResult.fail("서버가 혼잡합니다. 잠시 후 다시 시도해주세요.");
+            if (issuanceStrategy.requiresDbLock()) {
+                return issueWithDbLock(request);
             }
-
-            return getCouponIssueResult(request, requestId);
+            return issueWithRedis(request);
         } finally {
             log.info("[{}]: 발급 요청 처리 완료 | 소요시간: {}ms | 부하: {}",
                     request.code(),
                     System.currentTimeMillis() - startTime,
-                    currentLoadFactor.get()
-            );
-        }
-    }
-
-    private CouponIssueResult getCouponIssueResult(CouponIssueRequest request, String requestId) {
-        //4. 재고 감소
-        try {
-            return processIssuanceWithLock(request, requestId);
-        } finally {
+                    currentLoadFactor.get());
             currentLoadFactor.decrementAndGet();
-            releaseLockAfterTransaction(request.code(), requestId);
         }
     }
 
-    private void releaseLockAfterTransaction(String code, String requestId) {
-        if (TransactionSynchronizationManager.isSynchronizationActive()) {
-            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
-                @Override
-                public void afterCompletion(int status) {
-                    issuanceStrategy.releaseLock(code, requestId);
-                }
-            });
-        } else {
-            issuanceStrategy.releaseLock(code, requestId);
-        }
-    }
+    /**
+     * Redis 경로: Redis 원자 예약 → 별도 DB 트랜잭션.
+     * 분산락 없음. 유니크 제약이 중복 발급을 최종 보장.
+     */
+    private CouponIssueResult issueWithRedis(CouponIssueRequest request) {
+        boolean reserved = false;
+        boolean compensated = false;
 
-    private CouponIssueResult processIssuanceWithLock(CouponIssueRequest request, String requestId) {
-        // 4. Redis 재고 감소 시도
-        if (!attemptToDecreaseStock(request.code(), requestId)) {
-            saveCouponIssueHistory(request.code(), request.userId(), request.requestIp(),
-                    IssueResult.FAIL, "재고 소진");
+        // fast-fail (최적화용; correctness는 decreaseStock()이 보장)
+        if (!issuanceStrategy.hasStock(request.code())) {
+            couponIssueHistoryService.saveFailureHistory(
+                    request.code(), request.userId(), request.requestIp(), "재고 소진");
             return CouponIssueResult.fail("쿠폰이 모두 소진되었습니다.");
         }
 
+        // Redis 원자 재고 예약
+        if (!issuanceStrategy.decreaseStock(request.code())) {
+            couponIssueHistoryService.saveFailureHistory(
+                    request.code(), request.userId(), request.requestIp(), "재고 소진");
+            return CouponIssueResult.fail("쿠폰이 모두 소진되었습니다.");
+        }
+        reserved = true;
+
         try {
-            // 5. 쿠폰 존재 여부 확인 및 발급 처리
-            Coupon coupon = findValidCoupon(request.code());
-            return issueCouponAndRecordHistory(request, requestId, coupon);
+            // DB 트랜잭션 (자체 @Transactional)
+            return couponIssuancePersistenceService.issueReservedCoupon(request);
+        } catch (DuplicateCouponException | DataIntegrityViolationException e) {
+            // 유니크 제약 위반 → Redis 보상
+            if (!compensated) {
+                issuanceStrategy.increaseStock(request.code());
+                compensated = true;
+            }
+            couponIssueHistoryService.saveFailureHistory(
+                    request.code(), request.userId(), request.requestIp(), "중복 발급");
+            throw new DuplicateCouponException(COUPON_DUPLICATE_ERROR_MESSAGE);
         } catch (CouponNotFoundException e) {
-            // 쿠폰 미존재: 재고 복구 후 예외 전파
-            issuanceStrategy.increaseStock(request.code());
-            saveCouponIssueHistory(request.code(), request.userId(), request.requestIp(),
-                    IssueResult.FAIL, e.getMessage());
+            if (!compensated) {
+                issuanceStrategy.increaseStock(request.code());
+                compensated = true;
+            }
+            couponIssueHistoryService.saveFailureHistory(
+                    request.code(), request.userId(), request.requestIp(), e.getMessage());
             throw e;
         } catch (Exception e) {
-            // 기타 실패: Redis 재고 복구
-            issuanceStrategy.increaseStock(request.code());
-            saveCouponIssueHistory(request.code(), request.userId(), request.requestIp(),
-                    IssueResult.FAIL, e.getMessage());
-            return CouponIssueResult.fail(e.getMessage());
+            // DB 실패 → Redis 보상
+            if (reserved && !compensated) {
+                issuanceStrategy.increaseStock(request.code());
+                compensated = true;
+            }
+            log.error("[{}]: DB 발급 실패 | userId: {} | 원인: {}",
+                    request.code(), request.userId(), e.getMessage());
+            couponIssueHistoryService.saveFailureHistory(
+                    request.code(), request.userId(), request.requestIp(), e.getMessage());
+            return CouponIssueResult.fail("쿠폰 발급이 불가능합니다.");
         }
     }
 
-    private boolean attemptToDecreaseStock(String couponCode, String requestId) {
-        long stockCheckStart = System.currentTimeMillis();
-        boolean decreased = issuanceStrategy.decreaseStock(couponCode);
-
-        log.debug("[{}]: 재고 감소 처리 시간: {}ms | requestId: {}",
-                couponCode,
-                System.currentTimeMillis() - stockCheckStart,
-                requestId);
-
-        return decreased;
-    }
-
-    private Coupon findValidCoupon(String couponCode) {
-        if (issuanceStrategy.requiresDbLock()) {
-            return couponRepository.findByCodeWithLock(couponCode)
-                    .orElseThrow(() -> new CouponNotFoundException(COUPON_NOT_FOUND_MESSAGE));
+    /**
+     * DB-only 경로: 비관적 락 + coupon.issue() + CouponIssue 저장.
+     * CouponIssuancePersistenceService.issueWithDbLock()이 @Transactional 보장.
+     */
+    private CouponIssueResult issueWithDbLock(CouponIssueRequest request) {
+        // 중복 발급 사전 검증 (DB-only 경로에서만 수행 — 비관적 락 내에서 안전)
+        if (couponIssueRepository.existsByCouponCodeAndUserId(request.code(), request.userId())) {
+            couponIssueHistoryService.saveFailureHistory(
+                    request.code(), request.userId(), request.requestIp(), "중복 발급");
+            throw new DuplicateCouponException(COUPON_DUPLICATE_ERROR_MESSAGE);
         }
-        return couponRepository.findByCodeAndIsDeletedFalse(couponCode)
-                .orElseThrow(() -> new CouponNotFoundException(COUPON_NOT_FOUND_MESSAGE));
-    }
 
-    private CouponIssueResult issueCouponAndRecordHistory(
-            CouponIssueRequest request,
-            String requestId,
-            Coupon coupon) {
         try {
-            // 쿠폰 발급 가능 여부 확인 및 재고 감소
-            coupon.issue();
-
-            // 쿠폰 발급 정보 저장
-            CouponIssue couponIssue = createCouponIssue(request.userId(), coupon);
-
-            // 발급 이력 기록
-            saveCouponIssueHistory(
-                    request.code(),
-                    request.userId(),
-                    request.requestIp(),
-                    IssueResult.SUCCESS,
-                    null
-            );
-
-            log.info("[{}]: 쿠폰 발급 성공 | requestId: {} userId: {}",
-                    request.code(), requestId, request.userId());
-
-            return CouponIssueResult.success(couponIssue.getIssuedCode());
+            return couponIssuancePersistenceService.issueWithDbLock(request);
         } catch (Exception e) {
-            log.error("[{}]: 쿠폰 발급 실패 | requestId: {} userId: {} | 원인: {}",
-                    request.code(), requestId, request.userId(), e.getMessage());
+            log.error("[{}]: DB-only 발급 실패 | userId: {} | 원인: {}",
+                    request.code(), request.userId(), e.getMessage());
+            couponIssueHistoryService.saveFailureHistory(
+                    request.code(), request.userId(), request.requestIp(), e.getMessage());
             throw e;
         }
     }
 
-    private CouponIssue createCouponIssue(Long userId, Coupon coupon) {
-        String issuedCode = couponCodeGenerator.generateCode();
-
-        return couponIssueRepository.save(
-                CouponIssue.builder()
-                        .coupon(coupon)
-                        .userId(userId)
-                        .issuedCode(issuedCode)
-                        .build()
-        );
-    }
-
-    private void saveCouponIssueHistory(
-            String code,
-            Long userId,
-            String requestIp,
-            IssueResult result,
-            String failReason) {
-        try {
-            couponIssueHistoryRepository.save(
-                    CouponIssueHistory.builder()
-                            .code(code)
-                            .userId(userId)
-                            .requestIp(requestIp)
-                            .result(result)
-                            .failReason(failReason)
-                            .build()
-            );
-        } catch (Exception e) {
-            log.error("발급 이력 저장 실패 | code: {} userId: {} result: {} | 원인: {}",
-                    code, userId, result, e.getMessage());
-        }
-    }
-
-    // 쿠폰 사용 관련 메서드
+    // 쿠폰 사용
     @Transactional
     public CouponUseResponse useCoupon(Long userId, String issueCode) {
         log.debug("[{}]: 쿠폰 사용 시도 시작 | userId: {}", issueCode, userId);

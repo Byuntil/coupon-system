@@ -15,13 +15,8 @@ public class RedisCouponIssuanceStrategy implements CouponIssuanceStrategy {
     private final RedisStockService redisStockService;
 
     @Override
-    public boolean acquireLock(String couponCode, String requestId) {
-        return redisStockService.acquireLock(couponCode, requestId);
-    }
-
-    @Override
-    public void releaseLock(String couponCode, String requestId) {
-        redisStockService.releaseLock(couponCode, requestId);
+    public boolean hasStock(String couponCode) {
+        return redisStockService.hasStock(couponCode);
     }
 
     @Override

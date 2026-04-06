@@ -2,9 +2,8 @@ package cloud.coupon.domain.coupon.service.strategy;
 
 public interface CouponIssuanceStrategy {
 
-    boolean acquireLock(String couponCode, String requestId);
-
-    void releaseLock(String couponCode, String requestId);
+    // fast-fail optimization only. correctness is decided by decreaseStock().
+    boolean hasStock(String couponCode);
 
     boolean decreaseStock(String couponCode);
 
