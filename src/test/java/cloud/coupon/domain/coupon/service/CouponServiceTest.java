@@ -16,6 +16,7 @@ import cloud.coupon.domain.coupon.repository.CouponIssueRepository;
 import cloud.coupon.domain.coupon.repository.CouponRepository;
 import cloud.coupon.domain.history.entity.CouponIssueHistory;
 import cloud.coupon.domain.history.repository.CouponIssueHistoryRepository;
+import cloud.coupon.domain.history.repository.CouponUseHistoryRepository;
 import cloud.coupon.domain.coupon.service.strategy.CouponIssuanceStrategy;
 import cloud.coupon.domain.coupon.service.strategy.RedisCouponIssuanceStrategy;
 import cloud.coupon.global.error.exception.coupon.CouponNotFoundException;
@@ -54,6 +55,9 @@ class CouponServiceTest {
     private CouponIssueHistoryRepository couponIssueHistoryRepository;
 
     @Autowired
+    private CouponUseHistoryRepository couponUseHistoryRepository;
+
+    @Autowired
     private CouponIssuanceStrategy issuanceStrategy;
 
     @Autowired
@@ -69,6 +73,7 @@ class CouponServiceTest {
 
     @AfterEach
     void tearDown() {
+        couponUseHistoryRepository.deleteAll();
         couponIssueHistoryRepository.deleteAll();
         couponIssueRepository.deleteAll();
         couponRepository.deleteAll();
@@ -79,6 +84,7 @@ class CouponServiceTest {
 
     @BeforeEach
     void setUp() {
+        couponUseHistoryRepository.deleteAll();
         couponIssueHistoryRepository.deleteAll();
         couponIssueRepository.deleteAll();
         couponRepository.deleteAll();
