@@ -129,6 +129,11 @@ class CouponServiceTest {
                 .orElseThrow();
         assertThat(updatedCoupon.getRemainStock()).isEqualTo(9);
 
+        // CouponIssue row 수와 remainStock 감소가 일치하는지 확인
+        int issuedCount = couponIssueRepository.countByCouponCode(code);
+        assertThat(issuedCount).isEqualTo(1);
+        assertThat(updatedCoupon.getRemainStock()).isEqualTo(10 - issuedCount); // remainStock + issuedCount = totalStock
+
         // 히스토리 확인
         CouponIssueHistory history = couponIssueHistoryRepository
                 .findByCodeAndUserId(code, userId)
