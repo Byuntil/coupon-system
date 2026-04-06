@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -38,7 +39,6 @@ import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.transaction.annotation.Transactional;
 
 @SpringBootTest
-@Transactional
 @ExtendWith(OutputCaptureExtension.class)
 class CouponServiceTest {
     @Autowired
@@ -67,11 +67,21 @@ class CouponServiceTest {
         return issuanceStrategy instanceof RedisCouponIssuanceStrategy;
     }
 
+    @AfterEach
+    void tearDown() {
+        couponIssueHistoryRepository.deleteAll();
+        couponIssueRepository.deleteAll();
+        couponRepository.deleteAll();
+        if (isRedisStrategy()) {
+            redisStockService.deleteAllKeys();
+        }
+    }
+
     @BeforeEach
     void setUp() {
-        couponRepository.deleteAll();
-        couponIssueRepository.deleteAll();
         couponIssueHistoryRepository.deleteAll();
+        couponIssueRepository.deleteAll();
+        couponRepository.deleteAll();
 
         if (isRedisStrategy()) {
             redisStockService.deleteAllKeys();
@@ -95,6 +105,7 @@ class CouponServiceTest {
     }
 
     @Test
+    @Transactional
     @DisplayName("쿠폰 발급 성공")
     void issueCoupon_success() {
         // when
@@ -179,6 +190,7 @@ class CouponServiceTest {
     }
 
     @Test
+    @Transactional
     @DisplayName("쿠폰 사용 성공")
     void useCoupon_success() {
         // given
