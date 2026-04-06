@@ -23,6 +23,10 @@ import cloud.coupon.global.error.exception.coupon.DuplicateCouponException;
 import cloud.coupon.global.error.exception.couponissue.CouponIssueNotFoundException;
 import cloud.coupon.infra.redis.service.RedisStockService;
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -200,5 +204,56 @@ class CouponServiceTest {
                 couponService.useCoupon(userId, "INVALID_CODE"))
                 .isInstanceOf(CouponIssueNotFoundException.class)
                 .hasMessageContaining(COUPON_ISSUE_NOT_FOUND_MESSAGE);
+    }
+
+    @Test
+    @DisplayName("동일 유저 동시 재요청 시 발급은 1건만 저장되고 Redis 재고는 보상 복구된다")
+    void issueCoupon_duplicateConcurrentRequest_compensatesRedisStock() throws Exception {
+        // 현재 구현에서는 이 테스트가 실패할 수 있습니다 (Redis 보상 복구 미구현)
+        // Redis 전략에서만 의미 있는 테스트
+        if (!isRedisStrategy()) {
+            return;
+        }
+
+        // given - same user, two concurrent requests
+        ExecutorService executorService = Executors.newFixedThreadPool(2);
+        CountDownLatch startLatch = new CountDownLatch(1);
+        CountDownLatch doneLatch = new CountDownLatch(2);
+
+        // when
+        for (int i = 0; i < 2; i++) {
+            executorService.submit(() -> {
+                try {
+                    startLatch.await(); // 동시에 시작
+                    couponService.issueCoupon(new CouponIssueRequest(code, userId, requestIp));
+                } catch (Exception e) {
+                    // 중복 발급 예외 등은 정상 흐름
+                } finally {
+                    doneLatch.countDown();
+                }
+            });
+        }
+
+        startLatch.countDown(); // 두 스레드 동시 출발
+        doneLatch.await();
+        executorService.shutdown();
+
+        // then: CouponIssue는 1건만 남아야 함
+        int issuedCount = couponIssueRepository.countByCouponCode(code);
+        assertThat(issuedCount).isEqualTo(1);
+
+        // then: Redis 재고는 1개만 감소해야 함 (remainStock == 9)
+        Coupon updatedCoupon = couponRepository.findByCodeAndIsDeletedFalse(code).orElseThrow();
+        assertThat(updatedCoupon.getRemainStock()).isEqualTo(9);
+
+        // then: history는 성공 1건, duplicate 실패 1건
+        List<CouponIssueHistory> histories = couponIssueHistoryRepository.findAll().stream()
+                .filter(h -> h.getCode().equals(code) && userId.equals(h.getUserId()))
+                .toList();
+        long successCount = histories.stream().filter(h -> h.getResult() == IssueResult.SUCCESS).count();
+        long failCount = histories.stream().filter(h -> h.getResult() == IssueResult.FAIL).count();
+
+        assertThat(successCount).isEqualTo(1);
+        assertThat(failCount).isEqualTo(1);
     }
 }

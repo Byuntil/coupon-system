@@ -105,6 +105,10 @@ class CouponServicePerformanceTest {
         assertThat(updatedCoupon.getRemainStock()).isEqualTo(Math.max((STOCK_COUNT - TOTAL_THREAD_COUNT), 0));
 
         assertThat(issuedCount).isEqualTo(Math.min(STOCK_COUNT, TOTAL_THREAD_COUNT));
+
+        // 강화된 정합성 검증: 재고 + 발급 수 = 총 재고 (불변식)
+        assertThat(updatedCoupon.getRemainStock() + issuedCount).isEqualTo(STOCK_COUNT);
+        assertThat(issuedCount).isLessThanOrEqualTo(STOCK_COUNT);
     }
 
     private Coupon createTestCoupon(int stock) {
