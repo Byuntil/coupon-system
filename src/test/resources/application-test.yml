@@ -1,0 +1,2 @@
+coupon:
+  stock-sync-delay-ms: 3600000  # 테스트 중 스케줄러 실행 방지 (1시간)

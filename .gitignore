@@ -38,6 +38,7 @@ out/
 ### yml file ###
 application-*.yml
 !application-local.yml
+!application-test.yml
 
 ### Worktrees ###
 .worktrees/

@@ -57,28 +57,37 @@ public class RedisStockService {
 
     public void increaseStock(String code) {
         String key = STOCK_KEY_PREFIX + code;
-        try {
-            redisTemplate.opsForValue().increment(key);
-            log.info("[{}] Redis 재고 증가 완료", code);
+        for (int attempt = 0; attempt < 3; attempt++) {
+            try {
+                redisTemplate.opsForValue().increment(key);
+                log.info("[{}] Redis 재고 증가 완료 (시도 {})", code, attempt + 1);
 
-            String currentStock = redisTemplate.opsForValue().get(key);
+                String currentStock = redisTemplate.opsForValue().get(key);
 
-            if (currentStock != null) {
-                Coupon coupon = couponRepository.findByCodeAndIsDeletedFalse(code)
-                        .orElseThrow(() -> new CouponNotFoundException("쿠폰을 찾을 수 없습니다."));
+                if (currentStock != null) {
+                    Coupon coupon = couponRepository.findByCodeAndIsDeletedFalse(code)
+                            .orElseThrow(() -> new CouponNotFoundException("쿠폰을 찾을 수 없습니다."));
 
-                int redisStock = Integer.parseInt(currentStock);
-                if (redisStock > coupon.getTotalStock()) {
-                    // Redis 재고가 총 재고를 초과하면 조정합니다
-                    redisTemplate.opsForValue().set(key,
-                            String.valueOf(coupon.getTotalStock()));
-                    log.warn("[{}] Redis 재고가 총 재고를 초과하여 조정됨. Redis:{}, DB:{}",
-                            code, redisStock, coupon.getTotalStock());
+                    int redisStock = Integer.parseInt(currentStock);
+                    if (redisStock > coupon.getTotalStock()) {
+                        // Redis 재고가 총 재고를 초과하면 조정합니다
+                        redisTemplate.opsForValue().set(key,
+                                String.valueOf(coupon.getTotalStock()));
+                        log.warn("[{}] Redis 재고가 총 재고를 초과하여 조정됨. Redis:{}, DB:{}",
+                                code, redisStock, coupon.getTotalStock());
+                    }
+                }
+                return;
+            } catch (CouponNotFoundException e) {
+                log.error("[{}] Redis 재고 증가 실패 — 쿠폰 없음", code);
+                throw e;
+            } catch (Exception e) {
+                log.warn("[{}] Redis 재고 증가 실패 (시도 {}/3): {}", code, attempt + 1, e.getMessage());
+                if (attempt == 2) {
+                    log.error("[{}] Redis 재고 증가 최종 실패", code, e);
+                    throw new RedisOperationException("Redis 재고 증가 중 오류가 발생했습니다.");
                 }
             }
-        } catch (Exception e) {
-            log.error("[{}] Redis 재고 증가 실패 : {}", code, e.getMessage());
-            throw new RedisOperationException("Redis 재고 증가 중 오류가 발생했습니다.");
         }
     }
 

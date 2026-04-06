@@ -26,3 +26,4 @@ spring:
 
 coupon:
   strategy: redis
+  stock-sync-delay-ms: 30000
