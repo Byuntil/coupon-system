@@ -38,6 +38,7 @@ public class CouponService {
     private final CouponIssueHistoryService couponIssueHistoryService;
 
     // 쿠폰 발급 — 오케스트레이터 (트랜잭션 없음: Redis·DB 경로 각각 자체 트랜잭션)
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.NOT_SUPPORTED)
     public CouponIssueResult issueCoupon(CouponIssueRequest request) {
         log.debug("[{}]: 쿠폰 발급 시도 시작 | userId: {}", request.code(), request.userId());
 
@@ -62,9 +63,6 @@ public class CouponService {
      * 분산락 없음. 유니크 제약이 중복 발급을 최종 보장.
      */
     private CouponIssueResult issueWithRedis(CouponIssueRequest request) {
-        boolean reserved = false;
-        boolean compensated = false;
-
         // fast-fail (최적화용; correctness는 decreaseStock()이 보장)
         if (!issuanceStrategy.hasStock(request.code())) {
             couponIssueHistoryService.saveFailureHistory(
@@ -78,34 +76,22 @@ public class CouponService {
                     request.code(), request.userId(), request.requestIp(), "재고 소진");
             return CouponIssueResult.fail("쿠폰이 모두 소진되었습니다.");
         }
-        reserved = true;
 
         try {
             // DB 트랜잭션 (자체 @Transactional)
             return couponIssuancePersistenceService.issueReservedCoupon(request);
         } catch (DuplicateCouponException | DataIntegrityViolationException e) {
-            // 유니크 제약 위반 → Redis 보상
-            if (!compensated) {
-                issuanceStrategy.increaseStock(request.code());
-                compensated = true;
-            }
+            issuanceStrategy.increaseStock(request.code());
             couponIssueHistoryService.saveFailureHistory(
                     request.code(), request.userId(), request.requestIp(), "중복 발급");
             throw new DuplicateCouponException(COUPON_DUPLICATE_ERROR_MESSAGE);
         } catch (CouponNotFoundException e) {
-            if (!compensated) {
-                issuanceStrategy.increaseStock(request.code());
-                compensated = true;
-            }
+            issuanceStrategy.increaseStock(request.code());
             couponIssueHistoryService.saveFailureHistory(
                     request.code(), request.userId(), request.requestIp(), e.getMessage());
             throw e;
         } catch (Exception e) {
-            // DB 실패 → Redis 보상
-            if (reserved && !compensated) {
-                issuanceStrategy.increaseStock(request.code());
-                compensated = true;
-            }
+            issuanceStrategy.increaseStock(request.code());
             log.error("[{}]: DB 발급 실패 | userId: {} | 원인: {}",
                     request.code(), request.userId(), e.getMessage());
             couponIssueHistoryService.saveFailureHistory(

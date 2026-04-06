@@ -6,12 +6,10 @@ import cloud.coupon.domain.coupon.dto.request.CouponIssueRequest;
 import cloud.coupon.domain.coupon.dto.response.CouponIssueResult;
 import cloud.coupon.domain.coupon.entity.Coupon;
 import cloud.coupon.domain.coupon.entity.CouponIssue;
-import cloud.coupon.domain.coupon.entity.IssueResult;
 import cloud.coupon.domain.coupon.repository.CouponIssueRepository;
 import cloud.coupon.domain.coupon.repository.CouponRepository;
 import cloud.coupon.domain.coupon.util.CodeGenerator;
-import cloud.coupon.domain.history.entity.CouponIssueHistory;
-import cloud.coupon.domain.history.repository.CouponIssueHistoryRepository;
+import cloud.coupon.domain.history.service.CouponIssueHistoryService;
 import cloud.coupon.global.error.exception.coupon.CouponNotAvailableException;
 import cloud.coupon.global.error.exception.coupon.CouponNotFoundException;
 import cloud.coupon.global.error.exception.coupon.CouponOutOfStockException;
@@ -28,7 +26,7 @@ public class CouponIssuancePersistenceService {
 
     private final CouponRepository couponRepository;
     private final CouponIssueRepository couponIssueRepository;
-    private final CouponIssueHistoryRepository couponIssueHistoryRepository;
+    private final CouponIssueHistoryService couponIssueHistoryService;
     private final CodeGenerator couponCodeGenerator;
 
     /**
@@ -47,7 +45,16 @@ public class CouponIssuancePersistenceService {
             throw new CouponNotAvailableException("쿠폰 발급 기간이 아닙니다.");
         }
 
-        // 2. CouponIssue saveAndFlush — 유니크 제약(coupon_id + user_id) 위반 즉시 드러냄
+        // 2. DB 원자 재고 감소 — 먼저 exclusive lock 획득 (deadlock 방지)
+        // coupon_issue INSERT(FK shared lock) 보다 먼저 실행해야 lock 순서 일관성 보장
+        int updated = couponRepository.decreaseRemainStockAtomically(request.code(), now);
+
+        // 3. 0건이면 DB 재고 소진 → 전체 롤백
+        if (updated == 0) {
+            throw new CouponOutOfStockException("쿠폰 재고가 소진되었습니다.");
+        }
+
+        // 4. CouponIssue saveAndFlush — 유니크 제약(coupon_id + user_id) 위반 즉시 드러냄
         String issuedCode = couponCodeGenerator.generateCode();
         CouponIssue couponIssue = CouponIssue.builder()
                 .coupon(coupon)
@@ -56,24 +63,8 @@ public class CouponIssuancePersistenceService {
                 .build();
         couponIssueRepository.saveAndFlush(couponIssue);
 
-        // 3. DB 원자 재고 감소 (발급 기간·삭제 여부·재고 > 0 동시 검증)
-        int updated = couponRepository.decreaseRemainStockAtomically(request.code(), now);
-
-        // 4. 0건이면 DB 재고 소진 → 전체 롤백
-        if (updated == 0) {
-            throw new CouponOutOfStockException("쿠폰 재고가 소진되었습니다.");
-        }
-
         // 5. 성공 history 저장 (같은 트랜잭션)
-        couponIssueHistoryRepository.save(
-                CouponIssueHistory.builder()
-                        .code(request.code())
-                        .userId(request.userId())
-                        .requestIp(request.requestIp())
-                        .result(IssueResult.SUCCESS)
-                        .failReason(null)
-                        .build()
-        );
+        couponIssueHistoryService.saveSuccessHistory(request.code(), request.userId(), request.requestIp());
 
         log.info("[{}]: DB 발급 완료 | userId: {} issuedCode: {}", request.code(), request.userId(), issuedCode);
         return CouponIssueResult.success(issuedCode);
@@ -101,15 +92,7 @@ public class CouponIssuancePersistenceService {
         );
 
         // 성공 history 저장
-        couponIssueHistoryRepository.save(
-                CouponIssueHistory.builder()
-                        .code(request.code())
-                        .userId(request.userId())
-                        .requestIp(request.requestIp())
-                        .result(IssueResult.SUCCESS)
-                        .failReason(null)
-                        .build()
-        );
+        couponIssueHistoryService.saveSuccessHistory(request.code(), request.userId(), request.requestIp());
 
         log.info("[{}]: DB-only 발급 완료 | userId: {} issuedCode: {}", request.code(), request.userId(), issuedCode);
         return CouponIssueResult.success(issuedCode);
