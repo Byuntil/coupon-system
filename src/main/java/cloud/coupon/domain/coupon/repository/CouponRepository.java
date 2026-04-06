@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 /**
@@ -45,5 +46,5 @@ public interface CouponRepository extends JpaRepository<Coupon, Long> {
               AND start_time <= :now
               AND end_time >= :now
             """, nativeQuery = true)
-    int decreaseRemainStockAtomically(String code, LocalDateTime now);
+    int decreaseRemainStockAtomically(@Param("code") String code, @Param("now") LocalDateTime now);
 }
