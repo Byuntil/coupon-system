@@ -115,9 +115,6 @@ public class RedisStockService {
     }
 
 
-
-
-
     private void deleteKeysByPattern(String pattern) {
         Set<String> keys = redisTemplate.keys(pattern);
         if (!keys.isEmpty()) {
