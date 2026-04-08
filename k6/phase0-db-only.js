@@ -18,6 +18,7 @@ const systemErrorRate  = new Rate('system_error_rate');
 
 const issueDurationAll     = new Trend('issue_duration_all',     true);
 const issueDurationSuccess = new Trend('issue_duration_success', true);
+const issueDurationFail    = new Trend('issue_duration_fail',    true);
 
 // === 선착순 쿠폰 오픈 시나리오 ===
 // 오픈 직후 폭발적 유입(3s) → 경쟁 구간(30s) → 램프다운(5s)
@@ -95,6 +96,7 @@ export default function (data) {
         businessFailCounter.add(1);
         issueSuccessRate.add(false);
         systemErrorRate.add(false);
+        issueDurationFail.add(res.timings.duration);
         return;
     }
 
