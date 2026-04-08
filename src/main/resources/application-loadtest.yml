@@ -42,12 +42,13 @@ management:
     web:
       exposure:
         include: health,metrics,hikaricp
-  metrics:
-    export:
-      influx:
+  influx:
+    metrics:
+      export:
         uri: http://influxdb:8086
         db: k6
         step: 10s
         auto-create-db: false
+  metrics:
     tags:
       application: coupon-system
