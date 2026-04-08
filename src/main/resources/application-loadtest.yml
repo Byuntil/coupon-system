@@ -30,7 +30,7 @@ spring:
           max-wait: -1
 
 coupon:
-  strategy: db
+  strategy: redis
 
 logging:
   level:
