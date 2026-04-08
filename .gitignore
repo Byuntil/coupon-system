@@ -39,6 +39,8 @@ out/
 application-*.yml
 !application-local.yml
 !application-test.yml
+!application-loadtest.yml
 
 ### Worktrees ###
 .worktrees/
+.omx/
