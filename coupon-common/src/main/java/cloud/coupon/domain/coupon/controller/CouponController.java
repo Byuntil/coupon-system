@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+@Deprecated(since = "v2", forRemoval = false)
 @RestController
 @RequestMapping("/api/v1/coupons")
 @RequiredArgsConstructor
