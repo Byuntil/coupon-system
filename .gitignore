@@ -44,3 +44,7 @@ application-*.yml
 ### Worktrees ###
 .worktrees/
 .omx/
+
+### Docs ###
+docs/
+.DS_Store
