@@ -46,8 +46,16 @@ public class CouponIssuanceProcessor {
             return true;
 
         } catch (DataIntegrityViolationException e) {
+            // inflight → issued 전이 (Redis DB에서 이미 발급된 것으로 확인됨)
             redisStockService.transitionToIssued(code, userId);
-            redisStockService.increaseStock(code);
+
+            // 재고 복구 실패해도 티켓 결과는 반드시 저장
+            try {
+                redisStockService.increaseStock(code);
+            } catch (Exception stockEx) {
+                log.error("[{}]: 재고 복구 실패 (무시) | userId: {} | 원인: {}", code, userId, stockEx.getMessage());
+            }
+
             TicketResponse response = TicketResponse.alreadyIssued(ticketId);
             redisTicketService.saveTicket(ticketId, response);
             redisTicketService.publishResult(ticketId, TicketStatus.ALREADY_ISSUED);
