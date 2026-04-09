@@ -1,0 +1,27 @@
+spring:
+  profiles:
+    active: local
+  data:
+    redis:
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 8
+          min-idle: 0
+          max-wait: -1
+
+server:
+  port: 8081
+
+coupon:
+  scheduler:
+    stock-sync-enabled: true
+  consumer:
+    stream-key: coupon:issue:stream
+    group-name: coupon-issue-group
+    consumer-name: consumer-default
+    batch-size: 10
+    block-timeout: 2000
+    max-retry: 3
+    claim-idle-time: 60000
+    claim-interval: 30000
