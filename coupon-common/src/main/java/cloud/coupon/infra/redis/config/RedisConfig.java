@@ -10,6 +10,7 @@ import org.springframework.data.redis.connection.RedisStandaloneConfiguration;
 import org.springframework.data.redis.connection.lettuce.LettuceConnectionFactory;
 import org.springframework.data.redis.connection.lettuce.LettucePoolingClientConfiguration;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
 @Configuration
@@ -58,5 +59,23 @@ public class RedisConfig {
         redisTemplate.setValueSerializer(new StringRedisSerializer());
 
         return redisTemplate;
+    }
+
+    @Bean
+    public RedisTemplate<String, String> stringRedisTemplate(RedisConnectionFactory connectionFactory) {
+        RedisTemplate<String, String> template = new RedisTemplate<>();
+        template.setConnectionFactory(connectionFactory);
+        template.setKeySerializer(new StringRedisSerializer());
+        template.setValueSerializer(new StringRedisSerializer());
+        template.setHashKeySerializer(new StringRedisSerializer());
+        template.setHashValueSerializer(new StringRedisSerializer());
+        return template;
+    }
+
+    @Bean
+    public RedisMessageListenerContainer redisMessageListenerContainer(RedisConnectionFactory connectionFactory) {
+        RedisMessageListenerContainer container = new RedisMessageListenerContainer();
+        container.setConnectionFactory(connectionFactory);
+        return container;
     }
 }

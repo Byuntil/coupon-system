@@ -23,6 +23,42 @@ public class RedisStockService {
     private final RedisTemplate<String, String> redisTemplate;
     private final CouponRepository couponRepository;
     private static final String STOCK_KEY_PREFIX = "coupon:stock:";
+    private static final String INFLIGHT_KEY_PREFIX = "coupon:inflight:";
+    private static final String ISSUED_KEY_PREFIX = "coupon:issued:";
+    private static final String STREAM_KEY = "coupon:issue:stream";
+
+    private static final String ISSUE_LUA_SCRIPT = """
+            local inflight_key = KEYS[1]
+            local issued_key   = KEYS[2]
+            local stock_key    = KEYS[3]
+            local stream_key   = KEYS[4]
+            local user_id      = ARGV[1]
+            local ticket_id    = ARGV[2]
+            local code         = ARGV[3]
+            local request_ip   = ARGV[4]
+            local request_time = ARGV[5]
+
+            if redis.call('sismember', issued_key, user_id) == 1 then
+                return -3
+            end
+            if redis.call('sismember', inflight_key, user_id) == 1 then
+                return -4
+            end
+            local stock = redis.call('get', stock_key)
+            if not stock then return -2 end
+            if tonumber(stock) <= 0 then return -1 end
+
+            redis.call('decr', stock_key)
+            redis.call('sadd', inflight_key, user_id)
+            redis.call('xadd', stream_key, '*',
+                'ticketId', ticket_id,
+                'code', code,
+                'userId', user_id,
+                'requestIp', request_ip,
+                'requestTime', request_time)
+
+            return tonumber(redis.call('get', stock_key))
+            """;
 
     @PostConstruct
     public void initializeStockData() {
@@ -114,6 +150,42 @@ public class RedisStockService {
         log.info("[{}] Redis 재고 동기화. 설정값: {}", code, dbStock);
     }
 
+
+    /**
+     * 통합 Lua: 중복체크(issued+inflight) + 재고차감 + XADD 원자적 수행.
+     * 반환값: >= 0 성공(남은 재고), -1 재고소진, -2 쿠폰없음, -3 발급완료중복, -4 처리중중복
+     */
+    public long issueAtomically(String couponCode, String userId, String ticketId, String requestIp, String requestTime) {
+        List<String> keys = List.of(
+                INFLIGHT_KEY_PREFIX + couponCode,
+                ISSUED_KEY_PREFIX + couponCode,
+                STOCK_KEY_PREFIX + couponCode,
+                STREAM_KEY
+        );
+        List<String> args = List.of(userId, ticketId, couponCode, requestIp, requestTime);
+
+        return redisTemplate.execute(
+                new DefaultRedisScript<>(ISSUE_LUA_SCRIPT, Long.class),
+                keys,
+                args.toArray()
+        );
+    }
+
+    /**
+     * Consumer 성공 시: inflight → issued 전이
+     */
+    public void transitionToIssued(String couponCode, String userId) {
+        redisTemplate.opsForSet().remove(INFLIGHT_KEY_PREFIX + couponCode, userId);
+        redisTemplate.opsForSet().add(ISSUED_KEY_PREFIX + couponCode, userId);
+    }
+
+    /**
+     * Consumer 실패/DLQ 시: inflight에서 제거 + 재고 복구
+     */
+    public void rollbackInflight(String couponCode, String userId) {
+        redisTemplate.opsForSet().remove(INFLIGHT_KEY_PREFIX + couponCode, userId);
+        redisTemplate.opsForValue().increment(STOCK_KEY_PREFIX + couponCode);
+    }
 
     private void deleteKeysByPattern(String pattern) {
         Set<String> keys = redisTemplate.keys(pattern);
