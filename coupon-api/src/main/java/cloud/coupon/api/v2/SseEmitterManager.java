@@ -34,8 +34,22 @@ public class SseEmitterManager {
     }
 
     public SseEmitter subscribe(String ticketId) {
-        // 이미 완료된 ticket이면 즉시 전송 후 종료
+        // ticket 자체가 없으면 즉시 404 에러 응답
         Optional<TicketResponse> existing = redisTicketService.getTicket(ticketId);
+        if (existing.isEmpty()) {
+            SseEmitter emitter = new SseEmitter(SSE_TIMEOUT);
+            try {
+                emitter.send(SseEmitter.event()
+                        .name("error")
+                        .data("{\"message\":\"존재하지 않는 ticketId입니다.\"}"));
+                emitter.complete();
+            } catch (IOException e) {
+                emitter.completeWithError(e);
+            }
+            return emitter;
+        }
+
+        // 이미 완료된 ticket이면 즉시 전송 후 종료
         if (existing.isPresent() && existing.get().getStatus() != TicketStatus.PENDING) {
             SseEmitter emitter = new SseEmitter(SSE_TIMEOUT);
             try {
@@ -73,16 +87,26 @@ public class SseEmitterManager {
         if (emitter == null) return;
 
         Optional<TicketResponse> ticket = redisTicketService.getTicket(ticketId);
-        ticket.ifPresent(response -> {
+        if (ticket.isPresent()) {
             try {
                 emitter.send(SseEmitter.event()
                         .name("status")
-                        .data(objectMapper.writeValueAsString(response)));
+                        .data(objectMapper.writeValueAsString(ticket.get())));
                 emitter.complete();
             } catch (IOException e) {
                 emitter.completeWithError(e);
             }
-        });
+        } else {
+            // ticket 데이터를 가져올 수 없는 경우 에러 이벤트 전송 후 cleanup
+            try {
+                emitter.send(SseEmitter.event()
+                        .name("error")
+                        .data("{\"message\":\"결과를 가져올 수 없습니다. /status API를 사용해주세요.\"}"));
+                emitter.complete();
+            } catch (IOException e) {
+                emitter.completeWithError(e);
+            }
+        }
     }
 
     private void sendTimeout(String ticketId, SseEmitter emitter) {
