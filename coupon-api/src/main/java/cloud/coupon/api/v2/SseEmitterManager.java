@@ -4,16 +4,16 @@ import cloud.coupon.domain.coupon.dto.response.TicketResponse;
 import cloud.coupon.domain.coupon.dto.response.TicketStatus;
 import cloud.coupon.infra.redis.service.RedisTicketService;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import java.io.IOException;
-import java.util.Optional;
-import java.util.concurrent.ConcurrentHashMap;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.redis.connection.Message;
 import org.springframework.data.redis.connection.MessageListener;
 import org.springframework.data.redis.listener.ChannelTopic;
 import org.springframework.data.redis.listener.RedisMessageListenerContainer;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+
+import java.io.IOException;
+import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Component
@@ -34,59 +34,36 @@ public class SseEmitterManager {
     }
 
     public SseEmitter subscribe(String ticketId) {
-        // 1. ticket 존재 여부 먼저 확인
-        Optional<TicketResponse> existing = redisTicketService.getTicket(ticketId);
-        if (existing.isEmpty()) {
-            SseEmitter emitter = new SseEmitter(SSE_TIMEOUT);
-            try {
-                emitter.send(SseEmitter.event()
-                        .name("error")
-                        .data("{\"message\":\"존재하지 않는 ticketId입니다.\"}"));
-                emitter.complete();
-            } catch (IOException e) {
-                emitter.completeWithError(e);
-            }
-            return emitter;
+        Optional<TicketResponse> ticket = redisTicketService.getTicket(ticketId);
+
+        // 1. 존재하지 않는 ticket 처리
+        if (ticket.isEmpty()) {
+            return createErrorEmitter("존재하지 않는 ticketId입니다.");
         }
 
-        // 2. 이미 완료된 경우 즉시 반환
-        if (existing.isPresent() && existing.get().getStatus() != TicketStatus.PENDING) {
-            SseEmitter emitter = new SseEmitter(SSE_TIMEOUT);
-            try {
-                emitter.send(SseEmitter.event()
-                        .name("status")
-                        .data(objectMapper.writeValueAsString(existing.get())));
-                emitter.complete();
-            } catch (IOException e) {
-                emitter.completeWithError(e);
-            }
-            return emitter;
+        // 2. 이미 완료된 경우(PENDING이 아닌 경우) 즉시 반환
+        if (ticket.get().getStatus() != TicketStatus.PENDING) {
+            return createStatusEmitter(ticket.get());
         }
 
-        // 3. PENDING: Pub/Sub 리스너를 먼저 등록 (Race Condition 방지)
+        // 3. PENDING: Pub/Sub 리스너 등록 (Race Condition 방지)
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT);
         emitters.put(ticketId, emitter);
 
         String channel = redisTicketService.getResultChannelName(ticketId);
-        MessageListener listener = (message, pattern) -> handleMessage(ticketId, message);
+        MessageListener listener = (message, pattern) -> handleMessage(ticketId);
 
         listenerContainer.addMessageListener(listener, new ChannelTopic(channel));
 
         // 4. 리스너 등록 후 재확인 — 등록 전에 완료된 케이스 처리
         Optional<TicketResponse> recheck = redisTicketService.getTicket(ticketId);
         if (recheck.isPresent() && recheck.get().getStatus() != TicketStatus.PENDING) {
-            try {
-                emitter.send(SseEmitter.event()
-                        .name("status")
-                        .data(objectMapper.writeValueAsString(recheck.get())));
-                emitter.complete();
-            } catch (IOException e) {
-                emitter.completeWithError(e);
-            }
+            sendTicketStatus(emitter, recheck.get());
             cleanup(ticketId, listener, channel);
             return emitter;
         }
 
+        // 5. 콜백 설정
         emitter.onCompletion(() -> cleanup(ticketId, listener, channel));
         emitter.onTimeout(() -> {
             sendTimeout(ticketId, emitter);
@@ -97,47 +74,58 @@ public class SseEmitterManager {
         return emitter;
     }
 
-    private void handleMessage(String ticketId, Message message) {
+    private SseEmitter createErrorEmitter(String message) {
+        SseEmitter emitter = new SseEmitter(SSE_TIMEOUT);
+        sendError(emitter, message);
+        return emitter;
+    }
+
+    private SseEmitter createStatusEmitter(TicketResponse ticket) {
+        SseEmitter emitter = new SseEmitter(SSE_TIMEOUT);
+        sendTicketStatus(emitter, ticket);
+        return emitter;
+    }
+
+    private void handleMessage(String ticketId) {
         SseEmitter emitter = emitters.get(ticketId);
         if (emitter == null) return;
 
-        Optional<TicketResponse> ticket = redisTicketService.getTicket(ticketId);
-        if (ticket.isPresent()) {
-            try {
-                emitter.send(SseEmitter.event()
-                        .name("status")
-                        .data(objectMapper.writeValueAsString(ticket.get())));
-                emitter.complete();
-            } catch (IOException e) {
-                emitter.completeWithError(e);
-            }
-        } else {
-            // ticket 데이터를 가져올 수 없는 경우 에러 이벤트 전송 후 cleanup
-            try {
-                emitter.send(SseEmitter.event()
-                        .name("error")
-                        .data("{\"message\":\"결과를 가져올 수 없습니다. /status API를 사용해주세요.\"}"));
-                emitter.complete();
-            } catch (IOException e) {
-                emitter.completeWithError(e);
-            }
-        }
+        redisTicketService.getTicket(ticketId)
+                .ifPresentOrElse(
+                        ticket -> sendTicketStatus(emitter, ticket),
+                        () -> sendError(emitter, "결과를 가져올 수 없습니다. /status API를 사용해주세요.")
+                );
     }
 
-    private void sendTimeout(String ticketId, SseEmitter emitter) {
+    private void sendTicketStatus(SseEmitter emitter, TicketResponse ticket) {
         try {
-            TicketResponse timeout = TicketResponse.builder()
-                    .ticketId(ticketId)
-                    .status(TicketStatus.TIMEOUT)
-                    .message("처리 시간이 초과되었습니다. /status API로 결과를 확인해주세요.")
-                    .build();
             emitter.send(SseEmitter.event()
                     .name("status")
-                    .data(objectMapper.writeValueAsString(timeout)));
+                    .data(objectMapper.writeValueAsString(ticket)));
             emitter.complete();
         } catch (IOException e) {
             emitter.completeWithError(e);
         }
+    }
+
+    private void sendError(SseEmitter emitter, String message) {
+        try {
+            emitter.send(SseEmitter.event()
+                    .name("error")
+                    .data("{\"message\":\"" + message + "\"}"));
+            emitter.complete();
+        } catch (IOException e) {
+            emitter.completeWithError(e);
+        }
+    }
+
+    private void sendTimeout(String ticketId, SseEmitter emitter) {
+        TicketResponse timeout = TicketResponse.builder()
+                .ticketId(ticketId)
+                .status(TicketStatus.TIMEOUT)
+                .message("처리 시간이 초과되었습니다. /status API로 결과를 확인해주세요.")
+                .build();
+        sendTicketStatus(emitter, timeout);
     }
 
     private void cleanup(String ticketId, MessageListener listener, String channel) {

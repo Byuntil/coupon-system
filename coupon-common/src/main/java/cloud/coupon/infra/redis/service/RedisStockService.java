@@ -74,7 +74,10 @@ public class RedisStockService {
     }
 
     public void increaseStock(String code) {
-        String key = STOCK_KEY_PREFIX + code;
+        incrementWithRetry(STOCK_KEY_PREFIX + code, code);
+    }
+
+    private void incrementWithRetry(String key, String code) {
         for (int attempt = 0; attempt < 3; attempt++) {
             try {
                 redisTemplate.opsForValue().increment(key);
@@ -184,7 +187,7 @@ public class RedisStockService {
      */
     public void rollbackInflight(String couponCode, String userId) {
         redisTemplate.opsForSet().remove(INFLIGHT_KEY_PREFIX + couponCode, userId);
-        redisTemplate.opsForValue().increment(STOCK_KEY_PREFIX + couponCode);
+        incrementWithRetry(STOCK_KEY_PREFIX + couponCode, couponCode);
     }
 
     private void deleteKeysByPattern(String pattern) {

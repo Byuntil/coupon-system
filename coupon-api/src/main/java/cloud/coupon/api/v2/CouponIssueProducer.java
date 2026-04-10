@@ -19,6 +19,11 @@ import org.springframework.stereotype.Service;
 @RequiredArgsConstructor
 public class CouponIssueProducer {
 
+    private static final long RESULT_ALREADY_ISSUED = -3;
+    private static final long RESULT_INFLIGHT = -4;
+    private static final long RESULT_NOT_FOUND = -2;
+    private static final long RESULT_OUT_OF_STOCK = -1;
+
     private final RedisStockService redisStockService;
     private final RedisTicketService redisTicketService;
 
@@ -34,20 +39,20 @@ public class CouponIssueProducer {
                 requestTime
         );
 
-        if (result == -3) {
+        if (result == RESULT_ALREADY_ISSUED) {
             throw new DuplicateCouponException("이미 발급된 쿠폰입니다.");
         }
-        if (result == -4) {
+        if (result == RESULT_INFLIGHT) {
             log.info("[{}]: 발급 처리 중 중복 요청 | userId: {}", request.code(), request.userId());
             return TicketResponse.builder()
                     .status(TicketStatus.PENDING)
                     .message("발급 처리 중입니다.")
                     .build();
         }
-        if (result == -2) {
+        if (result == RESULT_NOT_FOUND) {
             throw new CouponNotFoundException("존재하지 않는 쿠폰입니다.");
         }
-        if (result == -1) {
+        if (result == RESULT_OUT_OF_STOCK) {
             throw new CouponOutOfStockException("쿠폰이 모두 소진되었습니다.");
         }
 

@@ -1,5 +1,6 @@
 package cloud.coupon.consumer;
 
+import cloud.coupon.consumer.config.ConsumerProperties;
 import cloud.coupon.domain.coupon.dto.response.TicketResponse;
 import cloud.coupon.domain.coupon.dto.response.TicketStatus;
 import cloud.coupon.domain.coupon.repository.CouponIssueRepository;
@@ -19,17 +20,12 @@ import org.springframework.stereotype.Component;
 @RequiredArgsConstructor
 public class DlqProcessor {
 
-    private static final String DLQ_KEY = "coupon:issue:dlq";
-
+    private final ConsumerProperties consumerProperties;
     private final CouponIssueRepository couponIssueRepository;
     private final RedisStockService redisStockService;
     private final RedisStreamService redisStreamService;
     private final RedisTicketService redisTicketService;
 
-    /**
-     * DLQ 이동 전 DB 조회로 실패 유형 구분.
-     * "실패처럼 보였지만 DB는 성공"인 케이스를 처리.
-     */
     public void moveToDlq(MapRecord<String, String, String> record, String errorMessage) {
         Map<String, String> fields = record.getValue();
         String ticketId = fields.get("ticketId");
@@ -62,7 +58,7 @@ public class DlqProcessor {
             dlqFields.put("errorMessage", errorMessage);
             dlqFields.put("failedAt", LocalDateTime.now().toString());
             dlqFields.put("originalMessageId", record.getId().getValue());
-            redisStreamService.addToDlq(DLQ_KEY, dlqFields);
+            redisStreamService.addToDlq(consumerProperties.getDlqKey(), dlqFields);
         }
     }
 }
