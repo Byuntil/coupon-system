@@ -2,6 +2,7 @@ package cloud.coupon.api.v2;
 
 import cloud.coupon.domain.coupon.dto.request.CouponIssueRequest;
 import cloud.coupon.domain.coupon.dto.response.TicketResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -18,7 +19,7 @@ public class CouponV2Controller {
     private final CouponIssueProducer couponIssueProducer;
 
     @PostMapping("/issue")
-    public ResponseEntity<TicketResponse> issueCoupon(@RequestBody CouponIssueRequest request) {
+    public ResponseEntity<TicketResponse> issueCoupon(@Valid @RequestBody CouponIssueRequest request) {
         TicketResponse ticket = couponIssueProducer.issue(request);
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(ticket);
     }

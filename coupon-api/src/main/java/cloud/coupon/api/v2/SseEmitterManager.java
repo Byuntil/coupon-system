@@ -34,7 +34,7 @@ public class SseEmitterManager {
     }
 
     public SseEmitter subscribe(String ticketId) {
-        // ticket 자체가 없으면 즉시 404 에러 응답
+        // 1. ticket 존재 여부 먼저 확인
         Optional<TicketResponse> existing = redisTicketService.getTicket(ticketId);
         if (existing.isEmpty()) {
             SseEmitter emitter = new SseEmitter(SSE_TIMEOUT);
@@ -49,7 +49,7 @@ public class SseEmitterManager {
             return emitter;
         }
 
-        // 이미 완료된 ticket이면 즉시 전송 후 종료
+        // 2. 이미 완료된 경우 즉시 반환
         if (existing.isPresent() && existing.get().getStatus() != TicketStatus.PENDING) {
             SseEmitter emitter = new SseEmitter(SSE_TIMEOUT);
             try {
@@ -63,7 +63,7 @@ public class SseEmitterManager {
             return emitter;
         }
 
-        // PENDING이면 Redis Pub/Sub 구독
+        // 3. PENDING: Pub/Sub 리스너를 먼저 등록 (Race Condition 방지)
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT);
         emitters.put(ticketId, emitter);
 
@@ -71,6 +71,21 @@ public class SseEmitterManager {
         MessageListener listener = (message, pattern) -> handleMessage(ticketId, message);
 
         listenerContainer.addMessageListener(listener, new ChannelTopic(channel));
+
+        // 4. 리스너 등록 후 재확인 — 등록 전에 완료된 케이스 처리
+        Optional<TicketResponse> recheck = redisTicketService.getTicket(ticketId);
+        if (recheck.isPresent() && recheck.get().getStatus() != TicketStatus.PENDING) {
+            try {
+                emitter.send(SseEmitter.event()
+                        .name("status")
+                        .data(objectMapper.writeValueAsString(recheck.get())));
+                emitter.complete();
+            } catch (IOException e) {
+                emitter.completeWithError(e);
+            }
+            cleanup(ticketId, listener, channel);
+            return emitter;
+        }
 
         emitter.onCompletion(() -> cleanup(ticketId, listener, channel));
         emitter.onTimeout(() -> {

@@ -1,4 +1,11 @@
 package cloud.coupon.domain.coupon.dto.request;
 
-public record CouponIssueRequest(String code, Long userId, String requestIp) {
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
+
+public record CouponIssueRequest(
+        @NotBlank String code,
+        @NotNull Long userId,
+        String requestIp
+) {
 }

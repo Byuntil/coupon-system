@@ -13,6 +13,11 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+/**
+ * DLQ 관리 API.
+ * TODO: 운영 환경에서는 Spring Security 또는 IP 화이트리스트로 접근 제한 필요.
+ * 발급 실패 사용자의 userId, requestIp 등 민감 정보가 포함됩니다.
+ */
 @RestController
 @RequestMapping("/admin/dlq")
 @RequiredArgsConstructor
