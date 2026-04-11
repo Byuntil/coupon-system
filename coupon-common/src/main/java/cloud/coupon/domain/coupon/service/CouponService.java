@@ -63,17 +63,19 @@ public class CouponService {
      * 분산락 없음. 유니크 제약이 중복 발급을 최종 보장.
      */
     private CouponIssueResult issueWithRedis(CouponIssueRequest request) {
+        Long nanos = request.serverReceivedAtNanos();
+
         // fast-fail (최적화용; correctness는 decreaseStock()이 보장)
         if (!issuanceStrategy.hasStock(request.code())) {
             couponIssueHistoryService.saveFailureHistory(
-                    request.code(), request.userId(), request.requestIp(), "재고 소진");
+                    request.code(), request.userId(), request.requestIp(), nanos, "재고 소진");
             return CouponIssueResult.fail("쿠폰이 모두 소진되었습니다.");
         }
 
         // Redis 원자 재고 예약
         if (!issuanceStrategy.decreaseStock(request.code())) {
             couponIssueHistoryService.saveFailureHistory(
-                    request.code(), request.userId(), request.requestIp(), "재고 소진");
+                    request.code(), request.userId(), request.requestIp(), nanos, "재고 소진");
             return CouponIssueResult.fail("쿠폰이 모두 소진되었습니다.");
         }
 
@@ -83,19 +85,19 @@ public class CouponService {
         } catch (DuplicateCouponException | DataIntegrityViolationException e) {
             issuanceStrategy.increaseStock(request.code());
             couponIssueHistoryService.saveFailureHistory(
-                    request.code(), request.userId(), request.requestIp(), "중복 발급");
+                    request.code(), request.userId(), request.requestIp(), nanos, "중복 발급");
             throw new DuplicateCouponException(COUPON_DUPLICATE_ERROR_MESSAGE);
         } catch (CouponNotFoundException e) {
             issuanceStrategy.increaseStock(request.code());
             couponIssueHistoryService.saveFailureHistory(
-                    request.code(), request.userId(), request.requestIp(), e.getMessage());
+                    request.code(), request.userId(), request.requestIp(), nanos, e.getMessage());
             throw e;
         } catch (Exception e) {
             issuanceStrategy.increaseStock(request.code());
             log.error("[{}]: DB 발급 실패 | userId: {} | 원인: {}",
                     request.code(), request.userId(), e.getMessage());
             couponIssueHistoryService.saveFailureHistory(
-                    request.code(), request.userId(), request.requestIp(), e.getMessage());
+                    request.code(), request.userId(), request.requestIp(), nanos, e.getMessage());
             return CouponIssueResult.fail("쿠폰 발급이 불가능합니다.");
         }
     }
@@ -105,10 +107,12 @@ public class CouponService {
      * CouponIssuancePersistenceService.issueWithDbLock()이 @Transactional 보장.
      */
     private CouponIssueResult issueWithDbLock(CouponIssueRequest request) {
+        Long nanos = request.serverReceivedAtNanos();
+
         // 중복 발급 사전 검증 (DB-only 경로에서만 수행 — 비관적 락 내에서 안전)
         if (couponIssueRepository.existsByCouponCodeAndUserId(request.code(), request.userId())) {
             couponIssueHistoryService.saveFailureHistory(
-                    request.code(), request.userId(), request.requestIp(), "중복 발급");
+                    request.code(), request.userId(), request.requestIp(), nanos, "중복 발급");
             throw new DuplicateCouponException(COUPON_DUPLICATE_ERROR_MESSAGE);
         }
 
@@ -118,7 +122,7 @@ public class CouponService {
             log.error("[{}]: DB-only 발급 실패 | userId: {} | 원인: {}",
                     request.code(), request.userId(), e.getMessage());
             couponIssueHistoryService.saveFailureHistory(
-                    request.code(), request.userId(), request.requestIp(), e.getMessage());
+                    request.code(), request.userId(), request.requestIp(), nanos, e.getMessage());
             throw e;
         }
     }

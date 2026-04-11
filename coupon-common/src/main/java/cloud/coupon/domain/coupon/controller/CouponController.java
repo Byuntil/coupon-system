@@ -22,7 +22,10 @@ public class CouponController {
 
     @PostMapping("/issue")
     public ResponseEntity<CouponIssueResult> issueCoupon(@RequestBody CouponIssueRequest request) {
-        CouponIssueResult result = couponService.issueCoupon(request);
+        // 서버 수신 시점 기록 — 순서 역전 측정용 (System.nanoTime: 단조 시계, JVM 내 비교만 유효)
+        CouponIssueRequest timestamped = new CouponIssueRequest(
+                request.code(), request.userId(), request.requestIp(), System.nanoTime());
+        CouponIssueResult result = couponService.issueCoupon(timestamped);
         if (result.isSuccess()) {
             return ResponseEntity.status(HttpStatus.CREATED).body(result);
         }

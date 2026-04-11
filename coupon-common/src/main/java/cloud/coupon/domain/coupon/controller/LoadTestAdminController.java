@@ -18,6 +18,8 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import static cloud.coupon.domain.coupon.entity.IssueResult.*;
+
 @Slf4j
 @RestController
 @RequestMapping("/api/v1/admin/load-test")
@@ -133,6 +135,28 @@ public class LoadTestAdminController {
                 "status", "OK",
                 "couponCode", request.couponCode(),
                 "totalStock", request.totalStock()
+        ));
+    }
+
+    @PostMapping("/analyze-ordering")
+    public ResponseEntity<Map<String, Object>> analyzeOrdering(@RequestBody TeardownRequest request) {
+        String code = request.couponCode();
+
+        long totalFail    = couponIssueHistoryRepository.countByCodeAndResult(code, FAIL);
+        long totalSuccess = couponIssueHistoryRepository.countByCodeAndResult(code, SUCCESS);
+
+        // 순서 역전: 실패한 요청 중 서버 수신 시점이 성공한 요청보다 빠른 경우
+        long violations = couponIssueHistoryRepository.countOrderingViolations(code);
+
+        log.info("[LoadTest] 순서 역전 분석 | code: {} | success: {} | fail: {} | violations: {}",
+                code, totalSuccess, totalFail, violations);
+
+        return ResponseEntity.ok(Map.of(
+                "couponCode", code,
+                "successCount", totalSuccess,
+                "failCount", totalFail,
+                "orderingViolations", violations,
+                "violationRate", totalFail > 0 ? String.format("%.2f%%", (double) violations / totalFail * 100) : "0%"
         ));
     }
 

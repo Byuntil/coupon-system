@@ -26,17 +26,19 @@ public class CouponIssueHistory {
     private Long userId;
     private String requestIp;              // 요청 IP
     private LocalDateTime requestTime;      // 요청 시간
+    private Long serverReceivedAtNanos;    // 서버 수신 시점 (System.nanoTime 기준 나노초)
 
     @Enumerated(EnumType.STRING)
     private IssueResult result;            // 발급 결과(성공/실패)
     private String failReason;             // 실패 사유
 
     @Builder
-    public CouponIssueHistory(String code, Long userId, String requestIp, IssueResult result, String failReason) {
+    public CouponIssueHistory(String code, Long userId, String requestIp, Long serverReceivedAtNanos, IssueResult result, String failReason) {
         this.code = code;
         this.userId = userId;
         this.requestIp = requestIp;
         this.requestTime = LocalDateTime.now();
+        this.serverReceivedAtNanos = serverReceivedAtNanos;
         this.result = result;
         this.failReason = failReason;
     }

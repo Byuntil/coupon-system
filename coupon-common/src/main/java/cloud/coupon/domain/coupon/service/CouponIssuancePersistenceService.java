@@ -64,7 +64,7 @@ public class CouponIssuancePersistenceService {
         couponIssueRepository.saveAndFlush(couponIssue);
 
         // 5. 성공 history 저장 (같은 트랜잭션)
-        couponIssueHistoryService.saveSuccessHistory(request.code(), request.userId(), request.requestIp());
+        couponIssueHistoryService.saveSuccessHistory(request.code(), request.userId(), request.requestIp(), request.serverReceivedAtNanos());
 
         log.info("[{}]: DB 발급 완료 | userId: {} issuedCode: {}", request.code(), request.userId(), issuedCode);
         return CouponIssueResult.success(issuedCode);
@@ -92,7 +92,7 @@ public class CouponIssuancePersistenceService {
         );
 
         // 성공 history 저장
-        couponIssueHistoryService.saveSuccessHistory(request.code(), request.userId(), request.requestIp());
+        couponIssueHistoryService.saveSuccessHistory(request.code(), request.userId(), request.requestIp(), request.serverReceivedAtNanos());
 
         log.info("[{}]: DB-only 발급 완료 | userId: {} issuedCode: {}", request.code(), request.userId(), issuedCode);
         return CouponIssueResult.success(issuedCode);

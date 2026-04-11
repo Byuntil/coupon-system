@@ -21,12 +21,13 @@ public class CouponIssueHistoryService {
      * 발급 트랜잭션이 롤백되면 함께 롤백됩니다.
      */
     @Transactional(propagation = Propagation.REQUIRED)
-    public void saveSuccessHistory(String code, Long userId, String requestIp) {
+    public void saveSuccessHistory(String code, Long userId, String requestIp, Long serverReceivedAtNanos) {
         couponIssueHistoryRepository.save(
                 CouponIssueHistory.builder()
                         .code(code)
                         .userId(userId)
                         .requestIp(requestIp)
+                        .serverReceivedAtNanos(serverReceivedAtNanos)
                         .result(IssueResult.SUCCESS)
                         .failReason(null)
                         .build()
@@ -38,13 +39,14 @@ public class CouponIssueHistoryService {
      * REQUIRES_NEW로 별도 트랜잭션을 열어 메인 흐름의 롤백과 무관하게 저장됩니다.
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    public void saveFailureHistory(String code, Long userId, String requestIp, String failReason) {
+    public void saveFailureHistory(String code, Long userId, String requestIp, Long serverReceivedAtNanos, String failReason) {
         try {
             couponIssueHistoryRepository.save(
                     CouponIssueHistory.builder()
                             .code(code)
                             .userId(userId)
                             .requestIp(requestIp)
+                            .serverReceivedAtNanos(serverReceivedAtNanos)
                             .result(IssueResult.FAIL)
                             .failReason(failReason)
                             .build()
