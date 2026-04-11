@@ -1,4 +1,4 @@
-package cloud.coupon.api.v2;
+package cloud.coupon.service;
 
 import cloud.coupon.domain.coupon.dto.request.CouponIssueRequest;
 import cloud.coupon.domain.coupon.dto.response.TicketResponse;

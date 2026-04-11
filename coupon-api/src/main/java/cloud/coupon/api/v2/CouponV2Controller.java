@@ -2,6 +2,7 @@ package cloud.coupon.api.v2;
 
 import cloud.coupon.domain.coupon.dto.request.CouponIssueRequest;
 import cloud.coupon.domain.coupon.dto.response.TicketResponse;
+import cloud.coupon.service.CouponIssueProducer;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;

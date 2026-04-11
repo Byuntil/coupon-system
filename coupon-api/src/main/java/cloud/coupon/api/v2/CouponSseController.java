@@ -1,5 +1,6 @@
 package cloud.coupon.api.v2;
 
+import cloud.coupon.sse.SseEmitterManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;

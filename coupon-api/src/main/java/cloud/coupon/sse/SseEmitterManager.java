@@ -1,4 +1,4 @@
-package cloud.coupon.api.v2;
+package cloud.coupon.sse;
 
 import cloud.coupon.domain.coupon.dto.response.TicketResponse;
 import cloud.coupon.domain.coupon.dto.response.TicketStatus;
