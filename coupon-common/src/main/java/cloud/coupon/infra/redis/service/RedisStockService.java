@@ -147,6 +147,22 @@ public class RedisStockService {
         deleteKeysByPattern(STOCK_KEY_PREFIX + "*");
     }
 
+    /**
+     * Phase 3 비동기 발급에서 사용하는 모든 Redis 키 삭제.
+     * stock, inflight, issued, ticket 패턴을 모두 정리한다.
+     * Stream과 DLQ는 별도로 삭제해야 한다 (RedisStreamService 또는 직접 삭제).
+     */
+    public void deleteAllPhase3Keys() {
+        deleteKeysByPattern(STOCK_KEY_PREFIX + "*");
+        deleteKeysByPattern(INFLIGHT_KEY_PREFIX + "*");
+        deleteKeysByPattern(ISSUED_KEY_PREFIX + "*");
+        deleteKeysByPattern("coupon:ticket:*");
+    }
+
+    public RedisTemplate<String, String> getRedisTemplate() {
+        return redisTemplate;
+    }
+
     public void syncStockWithDB(String code, int dbStock) {
         String stockKey = STOCK_KEY_PREFIX + code;
         redisTemplate.opsForValue().set(stockKey, String.valueOf(dbStock));
