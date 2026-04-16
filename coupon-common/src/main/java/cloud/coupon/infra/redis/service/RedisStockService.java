@@ -7,6 +7,7 @@ import cloud.coupon.domain.coupon.repository.CouponRepository;
 import cloud.coupon.global.error.exception.coupon.CouponNotFoundException;
 import cloud.coupon.global.error.exception.redis.RedisOperationException;
 import jakarta.annotation.PostConstruct;
+import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
@@ -26,6 +27,8 @@ public class RedisStockService {
     private static final String INFLIGHT_KEY_PREFIX = "coupon:inflight:";
     private static final String ISSUED_KEY_PREFIX = "coupon:issued:";
     private static final String STREAM_KEY = "coupon:issue:stream";
+    private static final String PHASE3_ADMIN_LOCK_KEY = "coupon:loadtest:phase3:admin:lock";
+    private static final Duration PHASE3_ADMIN_LOCK_TTL = Duration.ofHours(24);
 
     private static final String ISSUE_LUA_SCRIPT = """
             local inflight_key = KEYS[1]
@@ -58,6 +61,50 @@ public class RedisStockService {
                 'requestTime', request_time)
 
             return tonumber(redis.call('get', stock_key))
+            """;
+
+    private static final String TRANSITION_TO_ISSUED_LUA_SCRIPT = """
+            local inflight_key = KEYS[1]
+            local issued_key = KEYS[2]
+            local user_id = ARGV[1]
+
+            if redis.call('sismember', issued_key, user_id) == 1 then
+                return 1
+            end
+            if redis.call('sismember', inflight_key, user_id) == 0 then
+                return 0
+            end
+
+            redis.call('srem', inflight_key, user_id)
+            redis.call('sadd', issued_key, user_id)
+            return 1
+            """;
+
+    private static final String ROLLBACK_INFLIGHT_LUA_SCRIPT = """
+            local inflight_key = KEYS[1]
+            local issued_key = KEYS[2]
+            local stock_key = KEYS[3]
+            local user_id = ARGV[1]
+
+            if redis.call('sismember', issued_key, user_id) == 1 then
+                return -1
+            end
+            if redis.call('sismember', inflight_key, user_id) == 0 then
+                return 0
+            end
+            if redis.call('exists', stock_key) == 0 then
+                return -2
+            end
+
+            redis.call('srem', inflight_key, user_id)
+            return redis.call('incr', stock_key)
+            """;
+
+    private static final String RELEASE_PHASE3_ADMIN_LOCK_LUA_SCRIPT = """
+            if redis.call('get', KEYS[1]) == ARGV[1] then
+                return redis.call('del', KEYS[1])
+            end
+            return 0
             """;
 
     @PostConstruct
@@ -163,6 +210,25 @@ public class RedisStockService {
         return redisTemplate;
     }
 
+    public boolean tryAcquirePhase3AdminLock(String couponCode) {
+        Boolean acquired = redisTemplate.opsForValue()
+                .setIfAbsent(PHASE3_ADMIN_LOCK_KEY, couponCode, PHASE3_ADMIN_LOCK_TTL);
+        return Boolean.TRUE.equals(acquired);
+    }
+
+    public String getPhase3AdminLockOwner() {
+        return redisTemplate.opsForValue().get(PHASE3_ADMIN_LOCK_KEY);
+    }
+
+    public boolean releasePhase3AdminLock(String couponCode) {
+        Long released = redisTemplate.execute(
+                new DefaultRedisScript<>(RELEASE_PHASE3_ADMIN_LOCK_LUA_SCRIPT, Long.class),
+                Collections.singletonList(PHASE3_ADMIN_LOCK_KEY),
+                couponCode
+        );
+        return released != null && released > 0;
+    }
+
     public void syncStockWithDB(String code, int dbStock) {
         String stockKey = STOCK_KEY_PREFIX + code;
         redisTemplate.opsForValue().set(stockKey, String.valueOf(dbStock));
@@ -194,16 +260,44 @@ public class RedisStockService {
      * Consumer 성공 시: inflight → issued 전이
      */
     public void transitionToIssued(String couponCode, String userId) {
-        redisTemplate.opsForSet().remove(INFLIGHT_KEY_PREFIX + couponCode, userId);
-        redisTemplate.opsForSet().add(ISSUED_KEY_PREFIX + couponCode, userId);
+        Long result = redisTemplate.execute(
+                new DefaultRedisScript<>(TRANSITION_TO_ISSUED_LUA_SCRIPT, Long.class),
+                List.of(INFLIGHT_KEY_PREFIX + couponCode, ISSUED_KEY_PREFIX + couponCode),
+                userId
+        );
+
+        if (result != null && result == 0L) {
+            log.warn("[{}] inflight -> issued 전이 스킵 | userId: {}", couponCode, userId);
+        }
     }
 
     /**
      * Consumer 실패/DLQ 시: inflight에서 제거 + 재고 복구
      */
     public void rollbackInflight(String couponCode, String userId) {
-        redisTemplate.opsForSet().remove(INFLIGHT_KEY_PREFIX + couponCode, userId);
-        incrementWithRetry(STOCK_KEY_PREFIX + couponCode, couponCode);
+        Long result = redisTemplate.execute(
+                new DefaultRedisScript<>(ROLLBACK_INFLIGHT_LUA_SCRIPT, Long.class),
+                List.of(
+                        INFLIGHT_KEY_PREFIX + couponCode,
+                        ISSUED_KEY_PREFIX + couponCode,
+                        STOCK_KEY_PREFIX + couponCode
+                ),
+                userId
+        );
+
+        if (result == null) {
+            throw new RedisOperationException("Redis inflight 롤백 결과를 확인할 수 없습니다.");
+        }
+        if (result == -2L) {
+            throw new RedisOperationException("Redis 재고 키가 없어 inflight 롤백을 완료할 수 없습니다.");
+        }
+        if (result == -1L) {
+            log.warn("[{}] inflight 롤백 스킵(이미 issued) | userId: {}", couponCode, userId);
+            return;
+        }
+        if (result == 0L) {
+            log.warn("[{}] inflight 롤백 스킵(이미 처리됨) | userId: {}", couponCode, userId);
+        }
     }
 
     private void deleteKeysByPattern(String pattern) {
