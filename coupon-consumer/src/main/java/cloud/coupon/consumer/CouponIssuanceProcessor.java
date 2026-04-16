@@ -46,21 +46,15 @@ public class CouponIssuanceProcessor {
             return true;
 
         } catch (DataIntegrityViolationException e) {
-            // inflight → issued 전이 (Redis DB에서 이미 발급된 것으로 확인됨)
+            // ACK-loss 재처리: DB 커밋 성공 후 ACK 전 크래시로 인한 재처리.
             redisStockService.transitionToIssued(code, userId);
 
-            // 재고 복구 실패해도 티켓 결과는 반드시 저장
-            try {
-                redisStockService.increaseStock(code);
-            } catch (Exception stockEx) {
-                log.error("[{}]: 재고 복구 실패 (무시) | userId: {} | 원인: {}", code, userId, stockEx.getMessage());
-            }
-
-            TicketResponse response = TicketResponse.alreadyIssued(ticketId);
+            TicketResponse response = TicketResponse.completed(ticketId, code);
             redisTicketService.saveTicket(ticketId, response);
-            redisTicketService.publishResult(ticketId, TicketStatus.ALREADY_ISSUED);
+            redisTicketService.publishResult(ticketId, TicketStatus.COMPLETED);
 
-            log.info("[{}]: 유니크 제약 위반 (중복 발급) | userId: {} | ticketId: {}", code, userId, ticketId);
+            log.info("[{}]: ACK-loss 재처리 완료 | userId: {} | ticketId: {}",
+                    code, userId, ticketId);
             return true;
 
         } catch (Exception e) {

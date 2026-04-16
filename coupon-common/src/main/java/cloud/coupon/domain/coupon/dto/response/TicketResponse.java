@@ -43,11 +43,4 @@ public class TicketResponse {
                 .build();
     }
 
-    public static TicketResponse alreadyIssued(String ticketId) {
-        return TicketResponse.builder()
-                .ticketId(ticketId)
-                .status(TicketStatus.ALREADY_ISSUED)
-                .message("이미 발급된 쿠폰입니다.")
-                .build();
-    }
 }

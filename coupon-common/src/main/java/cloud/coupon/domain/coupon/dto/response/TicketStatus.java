@@ -4,6 +4,5 @@ public enum TicketStatus {
     PENDING,
     COMPLETED,
     FAILED,
-    ALREADY_ISSUED,
     TIMEOUT
 }
