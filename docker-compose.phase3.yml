@@ -8,11 +8,17 @@ services:
       MYSQL_DATABASE: coupondb
     ports:
       - "3306:3306"
+    command: >-
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --max-connections=200
     healthcheck:
       test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
       interval: 10s
       timeout: 5s
       retries: 5
+    volumes:
+      - mysql-data:/var/lib/mysql
 
   redis:
     image: redis:7-alpine
@@ -26,8 +32,8 @@ services:
 
   coupon-api:
     build:
-      context: .
-      dockerfile: coupon-api/Dockerfile
+      context: ./coupon-api
+      dockerfile: Dockerfile
     ports:
       - "8080:8080"
     depends_on:
@@ -36,7 +42,7 @@ services:
       redis:
         condition: service_healthy
     environment:
-      SPRING_PROFILES_ACTIVE: prod
+      SPRING_PROFILES_ACTIVE: prod,loadtest
       SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/coupondb?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Seoul
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: root
@@ -45,8 +51,8 @@ services:
 
   coupon-consumer:
     build:
-      context: .
-      dockerfile: coupon-consumer/Dockerfile
+      context: ./coupon-consumer
+      dockerfile: Dockerfile
     ports:
       - "8081:8081"
     depends_on:
@@ -61,3 +67,33 @@ services:
       SPRING_DATASOURCE_PASSWORD: root
       SPRING_DATA_REDIS_HOST: redis
       SPRING_DATA_REDIS_PORT: 6379
+
+  influxdb:
+    image: influxdb:1.8
+    ports:
+      - "8086:8086"
+    environment:
+      INFLUXDB_DB: k6
+      INFLUXDB_HTTP_AUTH_ENABLED: "false"
+    volumes:
+      - influxdb-data:/var/lib/influxdb
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+    depends_on:
+      - influxdb
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+
+volumes:
+  mysql-data:
+  influxdb-data:
+  grafana-data:
