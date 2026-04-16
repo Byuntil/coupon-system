@@ -7,7 +7,6 @@ import cloud.coupon.domain.coupon.repository.CouponRepository;
 import cloud.coupon.global.error.exception.coupon.CouponNotFoundException;
 import cloud.coupon.global.error.exception.redis.RedisOperationException;
 import jakarta.annotation.PostConstruct;
-import java.time.Duration;
 import java.util.Collections;
 import java.util.List;
 import java.util.Set;
@@ -28,7 +27,6 @@ public class RedisStockService {
     private static final String ISSUED_KEY_PREFIX = "coupon:issued:";
     private static final String STREAM_KEY = "coupon:issue:stream";
     private static final String PHASE3_ADMIN_LOCK_KEY = "coupon:loadtest:phase3:admin:lock";
-    private static final Duration PHASE3_ADMIN_LOCK_TTL = Duration.ofHours(24);
 
     private static final String ISSUE_LUA_SCRIPT = """
             local inflight_key = KEYS[1]
@@ -211,8 +209,7 @@ public class RedisStockService {
     }
 
     public boolean tryAcquirePhase3AdminLock(String couponCode) {
-        Boolean acquired = redisTemplate.opsForValue()
-                .setIfAbsent(PHASE3_ADMIN_LOCK_KEY, couponCode, PHASE3_ADMIN_LOCK_TTL);
+        Boolean acquired = redisTemplate.opsForValue().setIfAbsent(PHASE3_ADMIN_LOCK_KEY, couponCode);
         return Boolean.TRUE.equals(acquired);
     }
 
