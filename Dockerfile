@@ -8,14 +8,16 @@ COPY gradle gradle
 COPY build.gradle .
 COPY settings.gradle .
 
-# Copy source code
-COPY src src
+# Copy source code (multi-module)
+COPY coupon-common coupon-common
+COPY coupon-api coupon-api
+COPY coupon-consumer coupon-consumer
 
 # Give execute permission to gradlew
 RUN chmod +x ./gradlew
 
-# Build the application
-RUN ./gradlew build -x test
+# Build coupon-api (Phase 1 대상 모듈)
+RUN ./gradlew :coupon-api:bootJar -x test
 
 # Runtime stage
 FROM eclipse-temurin:21-jre-alpine
@@ -30,7 +32,7 @@ RUN addgroup -S spring && adduser -S spring -G spring
 USER spring:spring
 
 # Copy built artifact from builder stage
-COPY --from=builder /app/build/libs/*.jar app.jar
+COPY --from=builder /app/coupon-api/build/libs/*-SNAPSHOT.jar app.jar
 
 # Set environment variables
 ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
