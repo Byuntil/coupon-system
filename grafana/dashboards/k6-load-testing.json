@@ -511,6 +511,88 @@
           "resultFormat": "time_series"
         }
       ]
+    },
+    {
+      "datasource": "InfluxDB",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "pointSize": 5
+          },
+          "unit": "s",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 0,
+        "y": 52
+      },
+      "id": 12,
+      "title": "HikariCP 커넥션 획득 대기 시간",
+      "type": "timeseries",
+      "targets": [
+        {
+          "alias": "avg acquire time",
+          "query": "SELECT mean(\"mean\") FROM \"hikaricp_connections_acquire\" WHERE $timeFilter GROUP BY time(5s) fill(null)",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        },
+        {
+          "alias": "max acquire time",
+          "query": "SELECT mean(\"upper\") FROM \"hikaricp_connections_acquire\" WHERE $timeFilter GROUP BY time(5s) fill(null)",
+          "rawQuery": true,
+          "refId": "B",
+          "resultFormat": "time_series"
+        }
+      ]
+    },
+    {
+      "datasource": "InfluxDB",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "pointSize": 5
+          },
+          "unit": "s",
+          "min": 0
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 12,
+        "x": 12,
+        "y": 52
+      },
+      "id": 13,
+      "title": "엔드포인트 응답 시간 (/coupons/issue)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "alias": "avg response time",
+          "query": "SELECT mean(\"mean\") FROM \"http_server_requests\" WHERE uri='/api/v1/coupons/issue' AND $timeFilter GROUP BY time(5s) fill(null)",
+          "rawQuery": true,
+          "refId": "A",
+          "resultFormat": "time_series"
+        },
+        {
+          "alias": "max response time",
+          "query": "SELECT mean(\"upper\") FROM \"http_server_requests\" WHERE uri='/api/v1/coupons/issue' AND $timeFilter GROUP BY time(5s) fill(null)",
+          "rawQuery": true,
+          "refId": "B",
+          "resultFormat": "time_series"
+        }
+      ]
     }
   ],
   "schemaVersion": 38,
