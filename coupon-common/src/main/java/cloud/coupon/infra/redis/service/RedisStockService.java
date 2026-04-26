@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.script.DefaultRedisScript;
 import org.springframework.stereotype.Service;
@@ -27,6 +28,9 @@ public class RedisStockService {
     private static final String ISSUED_KEY_PREFIX = "coupon:issued:";
     private static final String STREAM_KEY = "coupon:issue:stream";
     private static final String PHASE3_ADMIN_LOCK_KEY = "coupon:loadtest:phase3:admin:lock";
+
+    @Value("${coupon.stock.sync-on-startup:true}")
+    private boolean syncStockOnStartup;
 
     private static final String ISSUE_LUA_SCRIPT = """
             local inflight_key = KEYS[1]
@@ -107,6 +111,11 @@ public class RedisStockService {
 
     @PostConstruct
     public void initializeStockData() {
+        if (!syncStockOnStartup) {
+            log.info("Redis 재고 시작 동기화 비활성화");
+            return;
+        }
+
         List<Coupon> activeCoupons = couponRepository.findAllActiveCoupons();
         for (Coupon coupon : activeCoupons) {
             syncStockWithDB(coupon.getCode(), coupon.getRemainStock());
@@ -223,7 +232,7 @@ public class RedisStockService {
                 Collections.singletonList(PHASE3_ADMIN_LOCK_KEY),
                 couponCode
         );
-        return released != null && released > 0;
+        return released > 0;
     }
 
     public void syncStockWithDB(String code, int dbStock) {

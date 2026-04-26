@@ -27,12 +27,24 @@ public class RedisStreamService {
             redisTemplate.opsForStream().createGroup(streamKey, ReadOffset.from("0"), groupName);
             log.info("Consumer Group 생성: stream={}, group={}", streamKey, groupName);
         } catch (Exception e) {
-            if (e.getMessage() != null && e.getMessage().contains("BUSYGROUP")) {
+            if (isBusyGroupError(e)) {
                 log.debug("Consumer Group 이미 존재: stream={}, group={}", streamKey, groupName);
             } else {
                 throw e;
             }
         }
+    }
+
+    static boolean isBusyGroupError(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            String message = current.getMessage();
+            if (message != null && message.contains("BUSYGROUP")) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
