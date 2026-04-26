@@ -8,6 +8,11 @@ VUS="${VUS:-500}"
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.phase3.yml}"
 CONSUMER_SERVICE="${CONSUMER_SERVICE:-coupon-consumer}"
 CLAIM_WAIT="${CLAIM_WAIT:-75}"
+RECOVERY_MAX_WAIT="${RECOVERY_MAX_WAIT:-120}"
+STREAM_KEY="${STREAM_KEY:-coupon:issue:stream}"
+GROUP_NAME="${GROUP_NAME:-coupon-issue-group}"
+STUCK_CONSUMER="${STUCK_CONSUMER:-stuck-consumer}"
+EXPECTED_ACCEPTED="${EXPECTED_ACCEPTED:-}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -26,6 +31,32 @@ api_post() {
         -d "${body}"
 }
 
+compose() {
+    docker-compose -f "${COMPOSE_FILE}" "$@"
+}
+
+redis_cli() {
+    compose exec -T redis redis-cli "$@"
+}
+
+json_get() {
+    local json=$1
+    local key=$2
+    echo "${json}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('${key}', -1))" 2>/dev/null || echo "-1"
+}
+
+cleanup() {
+    local exit_code=${1:-$?}
+    set +e
+
+    log_info "정리 중..."
+    compose stop "${CONSUMER_SERVICE}" > /dev/null
+    api_post "/api/v1/admin/load-test/teardown-phase3" "{\"couponCode\":\"${COUPON_CODE}\"}" > /dev/null
+    compose start "${CONSUMER_SERVICE}" > /dev/null
+
+    return "${exit_code}"
+}
+
 wait_for_api() {
     local max_tries=30
     for i in $(seq 1 "${max_tries}"); do
@@ -41,21 +72,35 @@ wait_for_api() {
 log_info "=== P3-4: Phase 3 장애 복구 시나리오 시작 ==="
 log_info "Stock: ${STOCK} | VUs: ${VUS} | Coupon: ${COUPON_CODE}"
 
+if [ -z "${EXPECTED_ACCEPTED}" ]; then
+    if [ "${VUS}" -lt "${STOCK}" ]; then
+        EXPECTED_ACCEPTED="${VUS}"
+    else
+        EXPECTED_ACCEPTED="${STOCK}"
+    fi
+fi
+
+log_info "Expected accepted: ${EXPECTED_ACCEPTED}"
+
 log_info "API 서버 대기 중..."
 wait_for_api
+
+trap 'cleanup $?' EXIT
+
+log_info "Consumer 중지..."
+compose stop "${CONSUMER_SERVICE}" > /dev/null
 
 log_info "Phase 3 셋업..."
 SETUP_RES=$(api_post "/api/v1/admin/load-test/setup-phase3" \
     "{\"couponCode\":\"${COUPON_CODE}\",\"couponName\":\"P3-4 장애 복구 테스트\",\"totalStock\":${STOCK}}")
 echo "Setup 결과: ${SETUP_RES}"
 
-log_info "Backlog 생성 중 (k6 burst)..."
+log_info "Backlog 생성 중 (k6 per-vu-iterations burst)..."
 k6 run --quiet \
     -e BASE_URL="${BASE_URL}" \
     -e VUS="${VUS}" \
     -e STOCK="${STOCK}" \
     -e COUPON_CODE="${COUPON_CODE}" \
-    --duration 5s \
     - <<'K6_SCRIPT'
 import http from 'k6/http';
 
@@ -86,13 +131,17 @@ K6_SCRIPT
 
 log_info "Backlog 생성 완료"
 
-sleep 3
+log_info "stuck consumer로 PEL 생성 중..."
+redis_cli XREADGROUP GROUP "${GROUP_NAME}" "${STUCK_CONSUMER}" COUNT "${EXPECTED_ACCEPTED}" STREAMS "${STREAM_KEY}" ">" > /dev/null
 
-log_info "Consumer 강제 종료..."
-docker-compose -f "${COMPOSE_FILE}" stop "${CONSUMER_SERVICE}"
-log_warn "Consumer 중지됨. PEL에 pending 메시지가 남아있을 것."
+PENDING_COUNT=$(redis_cli XPENDING "${STREAM_KEY}" "${GROUP_NAME}" | sed -n '1p')
+log_info "XPENDING count: ${PENDING_COUNT}"
 
-sleep 2
+if [ "${PENDING_COUNT}" -ne "${EXPECTED_ACCEPTED}" ]; then
+    log_error "PEL 생성 실패: pending=${PENDING_COUNT}, expected=${EXPECTED_ACCEPTED}"
+    exit 1
+fi
+
 log_info "중간 상태 확인..."
 MID_RES=$(api_post "/api/v1/admin/load-test/verify-phase3" \
     "{\"couponCode\":\"${COUPON_CODE}\"}")
@@ -106,38 +155,56 @@ done
 echo ""
 
 log_info "Consumer 재시작..."
-docker-compose -f "${COMPOSE_FILE}" start "${CONSUMER_SERVICE}"
+compose start "${CONSUMER_SERVICE}" > /dev/null
 
-log_info "Consumer 복구 대기 (60초)..."
-for i in $(seq 60 -1 1); do
-    printf "\r  남은 시간: %3ds " "${i}"
+log_info "Consumer 복구 대기 (최대 ${RECOVERY_MAX_WAIT}초)..."
+FINAL_RES=""
+for i in $(seq 1 "${RECOVERY_MAX_WAIT}"); do
+    FINAL_RES=$(api_post "/api/v1/admin/load-test/verify-phase3" \
+        "{\"couponCode\":\"${COUPON_CODE}\"}")
+    DB_ISSUED=$(json_get "${FINAL_RES}" "dbIssuedCount")
+    INFLIGHT=$(json_get "${FINAL_RES}" "inflightCount")
+    DLQ_LEN=$(json_get "${FINAL_RES}" "dlqLength")
+    TOTAL_PROCESSED=$((DB_ISSUED + DLQ_LEN))
+
+    if [ "${INFLIGHT}" -eq "0" ] && [ "${TOTAL_PROCESSED}" -eq "${EXPECTED_ACCEPTED}" ]; then
+        printf "\r  복구 완료: %3ds 경과\n" "${i}"
+        break
+    fi
+
+    printf "\r  경과 시간: %3ds | 발급+DLQ: %s/%s | inflight: %s " \
+        "${i}" "${TOTAL_PROCESSED}" "${EXPECTED_ACCEPTED}" "${INFLIGHT}"
     sleep 1
 done
 echo ""
 
 log_info "최종 검증..."
-FINAL_RES=$(api_post "/api/v1/admin/load-test/verify-phase3" \
-    "{\"couponCode\":\"${COUPON_CODE}\"}")
+if [ -z "${FINAL_RES}" ]; then
+    FINAL_RES=$(api_post "/api/v1/admin/load-test/verify-phase3" \
+        "{\"couponCode\":\"${COUPON_CODE}\"}")
+fi
 
 echo ""
 log_info "=== P3-4 최종 검증 결과 ==="
 echo "${FINAL_RES}" | python3 -m json.tool 2>/dev/null || echo "${FINAL_RES}"
 
-DB_ISSUED=$(echo "${FINAL_RES}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('dbIssuedCount', -1))" 2>/dev/null || echo "-1")
-INFLIGHT=$(echo "${FINAL_RES}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('inflightCount', -1))" 2>/dev/null || echo "-1")
-DLQ_LEN=$(echo "${FINAL_RES}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('dlqLength', -1))" 2>/dev/null || echo "-1")
-DB_CONSISTENT=$(echo "${FINAL_RES}" | python3 -c "import sys,json; print(json.load(sys.stdin).get('dbConsistent', False))" 2>/dev/null || echo "False")
+DB_ISSUED=$(json_get "${FINAL_RES}" "dbIssuedCount")
+INFLIGHT=$(json_get "${FINAL_RES}" "inflightCount")
+DLQ_LEN=$(json_get "${FINAL_RES}" "dlqLength")
+DB_CONSISTENT=$(json_get "${FINAL_RES}" "dbConsistent")
+REDIS_REMAIN_STOCK=$(json_get "${FINAL_RES}" "redisRemainStock")
 
 echo ""
 log_info "=== 판정 ==="
 
 PASS=true
 TOTAL_PROCESSED=$((DB_ISSUED + DLQ_LEN))
+EXPECTED_REDIS_STOCK=$((STOCK - EXPECTED_ACCEPTED))
 
-if [ "${TOTAL_PROCESSED}" -eq "${STOCK}" ]; then
-    log_info "유실 메시지: 0건 (발급=${DB_ISSUED} + DLQ=${DLQ_LEN} = ${TOTAL_PROCESSED}/${STOCK})"
+if [ "${TOTAL_PROCESSED}" -eq "${EXPECTED_ACCEPTED}" ]; then
+    log_info "유실 메시지: 0건 (발급=${DB_ISSUED} + DLQ=${DLQ_LEN} = ${TOTAL_PROCESSED}/${EXPECTED_ACCEPTED})"
 else
-    log_error "유실 가능: 발급=${DB_ISSUED} + DLQ=${DLQ_LEN} = ${TOTAL_PROCESSED} (expected: ${STOCK})"
+    log_error "유실 가능: 발급=${DB_ISSUED} + DLQ=${DLQ_LEN} = ${TOTAL_PROCESSED} (expected: ${EXPECTED_ACCEPTED})"
     PASS=false
 fi
 
@@ -155,6 +222,13 @@ else
     PASS=false
 fi
 
+if [ "${REDIS_REMAIN_STOCK}" -eq "${EXPECTED_REDIS_STOCK}" ]; then
+    log_info "Redis remaining stock: ${REDIS_REMAIN_STOCK}"
+else
+    log_error "Redis remaining stock 불일치: ${REDIS_REMAIN_STOCK} (expected: ${EXPECTED_REDIS_STOCK})"
+    PASS=false
+fi
+
 if [ "${DLQ_LEN}" -gt "0" ]; then
     log_warn "DLQ에 ${DLQ_LEN}건 이동됨 (장애 복구 중 max-retry 초과)"
 else
@@ -164,11 +238,15 @@ fi
 echo ""
 if [ "${PASS}" = true ]; then
     log_info "=== P3-4 결과: PASS ==="
+    RESULT_EXIT=0
 else
     log_error "=== P3-4 결과: FAIL ==="
+    RESULT_EXIT=1
 fi
 
-log_info "정리 중..."
-api_post "/api/v1/admin/load-test/teardown-phase3" "{\"couponCode\":\"${COUPON_CODE}\"}" > /dev/null
-
+trap - EXIT
+set +e
+cleanup "${RESULT_EXIT}"
+set -e
 log_info "=== P3-4 테스트 종료 ==="
+exit "${RESULT_EXIT}"

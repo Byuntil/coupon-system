@@ -35,13 +35,13 @@ if ! curl -s "${BASE_URL}/actuator/health" | grep -q '"UP"'; then
 fi
 
 log_info "=== P3-1: 접수 처리량 측정 ==="
-k6 run \
-    --out "influxdb=${INFLUX_URL}" \
-    -e BASE_URL="${BASE_URL}" \
-    -e VUS=500 \
-    -e STOCK=50000 \
-    -e COUPON_CODE="P3-1-VU500" \
-    k6/phase3-admission.js
+BASE_URL="${BASE_URL}" \
+INFLUX_URL="${INFLUX_URL}" \
+COMPOSE_FILE="${COMPOSE_FILE}" \
+VUS=500 \
+STOCK=1000000 \
+COUPON_CODE="P3-1-CONSUMER-RUNNING" \
+bash k6/run-phase3-admission-consumer-running.sh
 
 wait_gap "P3-1"
 
