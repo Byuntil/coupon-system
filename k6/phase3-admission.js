@@ -22,6 +22,7 @@ const DURATION = __ENV.DURATION || '30s';
 const RAMP_UP = __ENV.RAMP_UP || '10s';
 const VERIFY_POLL_INTERVAL_MS = parseInt(__ENV.VERIFY_POLL_INTERVAL_MS || '1000', 10);
 const VERIFY_MAX_WAIT_MS = parseInt(__ENV.VERIFY_MAX_WAIT_MS || '15000', 10);
+const TEARDOWN_MODE = __ENV.TEARDOWN_MODE || 'cleanup';
 
 // === 커스텀 메트릭 ===
 const acceptedCounter = new Counter('p3_accepted');
@@ -157,6 +158,12 @@ export function teardown(data) {
         console.log(`All processed: ${result.allProcessed}`);
     } else if (verifyRes) {
         console.error(`Verify failed: ${verifyRes.status} ${verifyRes.body}`);
+    }
+
+    if (TEARDOWN_MODE === 'verify-only') {
+        console.log('Teardown mode is verify-only. External runner must clean up Phase 3 state.');
+        console.log('=== P3-1 테스트 종료 ===');
+        return;
     }
 
     const teardownRes = http.post(
