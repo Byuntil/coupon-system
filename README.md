@@ -1,4 +1,4 @@
-# 고동시성 선착순 쿠폰 발급 시스템
+# 선착순 쿠폰 발급 시스템
 
 Spring Boot 3 / Java 21 / Redis / MySQL / Redis Streams / k6
 
