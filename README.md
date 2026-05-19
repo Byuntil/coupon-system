@@ -107,9 +107,8 @@ Consumer path
 
 ### Phase 4: 후속 고도화
 
-| 우선순위 | 항목                                            |
-|------|-----------------------------------------------|
-| 1    | Stream lag, XPENDING, consumer 처리량 지표         |
-| 2    | ordering inversion 분석 자동화                     |
-| 3    | single-consumer baseline 이후 multi-consumer 비교 |
-| 4    | Redis 유실 / 재시작 시나리오 보강                        |
+(진행중 ~ing)
+- 로컬 환경에서 개선
+  1. 컨슈머 2 -> 4 -> 8 늘려가며 비교
+  2. DB 커넥션 풀 조절하며 비교
+- 클라우드 환경에서 재측정 
